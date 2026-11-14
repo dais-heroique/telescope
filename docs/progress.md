@@ -23,3 +23,15 @@
 - LOVAC : **agrégé communal uniquement** en open data (pas de parcelle) → la vacance parcellaire n'est pas disponible.
 - Cerema DVF+ : 503 au test → optionnel, non bloquant.
 - Overpass (OSM) : non joignable depuis le sandbox ; BPE/Filosofi INSEE : URLs de fichiers à fixer à l'étape 10.
+
+## Étape 3 — Ingestion département 74 ✅
+- `npm run ingest -- --dep=74 [--only=a,b] [--skip=c]` : cadastre → bdnb → dvf → dpe → plu → sitadel → rnic → pm → loyers → vacance → features. Idempotent, journalisé dans `ingest_runs`, téléchargements avec reprise.
+- Résultat réel (PostGIS local) : 1 561 778 parcelles ; 361 853 groupes de bâtiments ; 139 613 mutations DVF ; 251 948 DPE ; 32 839 zones PLU ; 49 910 autorisations ; 16 353 copros ; 300 955 liens parcelle×personne morale. Durées : cadastre 2 min, DVF 1 min, BDNB 30 s, DPE 4 min, PLU 3,5 min, PM 1,5 min, features ≈ 4 min.
+- Tests Vitest : parseurs (IDU, DVF, DPE, calendrier de location).
+- **Reste** : fichiers locaux des personnes morales (locaux), RPLS (parc social), audits énergétiques, DPE tertiaire détaillé — non bloquants.
+
+## Étape 4 — Carte, calques, tuiles ✅
+- Tuiles MVT PostGIS (`/api/tiles/...`) : parcelles, bâtiments, DVF, PLU, permis, copros, points de score ; filtres Zod → SQL paramétré (`src/lib/filters.ts`, testé).
+- Calques activables avec légendes ; DVF coloré par prix/m² ou ancienneté ; DPE/score/personnes morales exclusifs ; popups sûrs ; heatmap de score prête (alimentée à l'étape 7).
+- Recherche : adresses (BAN/Géoplateforme), communes, références cadastrales.
+- **Reste** : outils de dessin / isochrones et liste synchronisée (étape 6), bascule vers la compression CDN à vérifier sur Vercel.

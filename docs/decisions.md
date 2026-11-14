@@ -27,3 +27,11 @@ Format : date · décision · raison. Quand une décision est ambiguë, on prend
 - **Permis « voisinage »** : comptage par cellules 300 m (EPSG:3857, ≈ 210 m réels) en 3×3, permis des 3 dernières années — plus rapide qu'un `ST_DWithin` par parcelle.
 - **LOVAC** : taux = vacants/parc privé au 01/01/2024 (même date de référence) ; « s » = secret statistique ignoré.
 - **Volumes réels du 74** (14/11/2026) : 1 561 778 parcelles, 361 853 groupes de bâtiments, 139 613 mutations DVF (juil. 2021 → juin 2026), 251 948 DPE (dont 205 401 existants = total API), 32 839 zones PLU, 49 910 autorisations Sitadel, 16 353 copropriétés RNIC, 300 955 couples parcelle×SIREN.
+
+## Étape 4 — carte & tuiles
+- **Compression des tuiles** : Next.js supprime `Content-Encoding` des réponses de Route Handlers (`next/dist/server/send-response.js`, liste `FORBIDDEN_HEADERS`) → un gzip manuel produit des tuiles illisibles (« Unable to parse the tile… gzipped »). On sert donc les MVT bruts et on laisse la compression au serveur/CDN ; on limite le volume à la source (zooms minimaux par couche, simplification, DVF « prix/m² » seulement sous z14).
+- **Tuiles** : `/api/tiles/{couche}/{z}/{x}/{y}.pbf?f=<filtres base64url>`, SQL `ST_AsMVT` entièrement paramétré (filtres validés par Zod, `buildWhere`). Zoom minimal par couche (parcelles 14, bâtiments 15, DVF 11, PLU 10, permis 13, copros 12, points de score 8) ; en dessous : 204. Cache CDN `s-maxage` tant que les droits ne dépendent pas de l'utilisateur (étape 12 : `private`).
+- **Parcelles** : double rendu — traits/survol/clic/numéros via les tuiles PCI de l'IGN (France entière) ; remplissage coloré (DPE, score, personnes morales) via nos tuiles PostGIS (propriétés compactes `c, dpe, s, pm, pg…`).
+- **Calques exclusifs** : DPE / score / personnes morales recolorent tous les trois les parcelles → un seul actif à la fois (`PARCEL_COLOR_GROUP`).
+- **Popups** : construits avec `textContent` (jamais d'`innerHTML`) → pas d'injection depuis les données de tuile.
+- **Mesure (14/11/2026, PostGIS local, dép. 74)** : tuile parcelles z16 ≈ 25 ms / 17 Ko ; z14 ≈ 45 ms / 70 Ko ; DVF z13 ≈ 60 ms ; PLU z12 ≈ 45 ms.

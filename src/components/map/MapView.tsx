@@ -2,19 +2,43 @@
 
 import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
-import type { Map as MlMap, MapLayerMouseEvent } from "maplibre-gl";
-import { useTheme } from "next-themes";
+import type { Map as MlMap, MapGeoJSONFeature, MapLayerMouseEvent } from "maplibre-gl";
 import { baseStyle } from "@/lib/map/styles";
+import { addVigieLayers, setVigieTiles, syncVigieLayers } from "@/lib/map/vigie-layers";
+import { encodeFilters } from "@/lib/filters";
 import { useUi } from "@/lib/store";
 
-const FRANCE_CENTER: [number, number] = [6.1294, 45.8992]; // Annecy (département 74 par défaut)
+const START: [number, number] = [6.1294, 45.8992]; // Annecy (département 74 par défaut)
+
+/** Éléments DOM construits sans innerHTML : aucune donnée de tuile n'est interprétée comme du HTML. */
+function popupContent(title: string, lines: string[]): HTMLElement {
+  const root = document.createElement("div");
+  root.style.cssText = "font:12px/1.4 var(--font-sans, system-ui);color:#0d1626;min-width:140px";
+  const h = document.createElement("div");
+  h.style.fontWeight = "600";
+  h.textContent = title;
+  root.appendChild(h);
+  for (const l of lines) {
+    const d = document.createElement("div");
+    d.textContent = l;
+    root.appendChild(d);
+  }
+  return root;
+}
+
+const eur = (n: unknown) => (typeof n === "number" ? n.toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " €" : "—");
 
 export default function MapView() {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
   const readyRef = useRef(false);
-  const { resolvedTheme } = useTheme();
-  const { basemap, layers, selected, flyTo, select } = useUi();
+  const filtersKey = useUi((s) => encodeFilters(s.filters));
+
+  function sync() {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    syncVigieLayers(map, useUi.getState());
+  }
 
   // ── Initialisation unique ─────────────────────────────────────────────
   useEffect(() => {
@@ -22,13 +46,14 @@ export default function MapView() {
     const map = new maplibregl.Map({
       container: container.current,
       style: baseStyle(),
-      center: FRANCE_CENTER,
+      center: START,
       zoom: 13,
       maxZoom: 20,
       minZoom: 4,
       attributionControl: { compact: true },
       hash: "map",
       fadeDuration: 0,
+      renderWorldCopies: false,
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "bottom-right");
@@ -36,81 +61,64 @@ export default function MapView() {
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 
     map.on("load", () => {
-      // Parcelles (tuiles vectorielles PCI, couverture France entière)
-      map.addLayer({
-        id: "parcelles-fill",
-        type: "fill",
-        source: "pci",
-        "source-layer": "parcelle",
-        minzoom: 14,
-        paint: {
-          "fill-color": ["case", ["boolean", ["feature-state", "hover"], false], "#e8a317", "#10294a"],
-          "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.35, 0.04],
-        },
-      });
-      map.addLayer({
-        id: "parcelles-line",
-        type: "line",
-        source: "pci",
-        "source-layer": "parcelle",
-        minzoom: 14,
-        paint: { "line-color": "#10294a", "line-opacity": 0.55, "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.3, 19, 1.2] },
-      });
-      map.addLayer({
-        id: "batiments-fill",
-        type: "fill",
-        source: "pci",
-        "source-layer": "batiment",
-        minzoom: 16,
-        layout: { visibility: "none" },
-        paint: { "fill-color": "#6b7a90", "fill-opacity": 0.55 },
-      });
-      map.addLayer({
-        id: "parcelle-selected",
-        type: "line",
-        source: "pci",
-        "source-layer": "parcelle",
-        filter: ["==", ["get", "idu"], ""],
-        paint: { "line-color": "#e8a317", "line-width": 3 },
-      });
-      map.addLayer({
-        id: "parcelles-label",
-        type: "symbol",
-        source: "pci",
-        "source-layer": "parcelle",
-        minzoom: 18,
-        layout: { "text-field": ["get", "numero"], "text-size": 11, "text-font": ["Noto Sans Regular"] },
-        paint: { "text-color": "#10294a", "text-halo-color": "#ffffff", "text-halo-width": 1.2 },
-      });
+      addVigieLayers(map, encodeFilters(useUi.getState().filters));
       readyRef.current = true;
-      syncLayers();
+      sync();
     });
 
-    // Survol + clic parcelle
+    // Survol des parcelles (états de feature : pas de re-rendu de tuile)
     let hoverId: string | null = null;
-    map.on("mousemove", "parcelles-fill", (e: MapLayerMouseEvent) => {
+    const hoverSource = (idu: string) => ({ source: "pci", sourceLayer: "parcelle", id: idu });
+    const onMove = (e: MapLayerMouseEvent) => {
       map.getCanvas().style.cursor = "pointer";
       const id = e.features?.[0]?.properties?.idu as string | undefined;
-      if (id === hoverId || !id) return;
-      if (hoverId) map.setFeatureState({ source: "pci", sourceLayer: "parcelle", id: hoverId }, { hover: false });
+      if (!id || id === hoverId) return;
+      if (hoverId) map.setFeatureState(hoverSource(hoverId), { hover: false });
       hoverId = id;
-      map.setFeatureState({ source: "pci", sourceLayer: "parcelle", id }, { hover: true });
-    });
+      map.setFeatureState(hoverSource(id), { hover: true });
+    };
+    map.on("mousemove", "parcelles-fill", onMove);
     map.on("mouseleave", "parcelles-fill", () => {
       map.getCanvas().style.cursor = "";
-      if (hoverId) map.setFeatureState({ source: "pci", sourceLayer: "parcelle", id: hoverId }, { hover: false });
+      if (hoverId) map.setFeatureState(hoverSource(hoverId), { hover: false });
       hoverId = null;
     });
-    map.on("click", "parcelles-fill", (e: MapLayerMouseEvent) => {
-      const p = e.features?.[0]?.properties;
-      if (!p?.idu) return;
-      select({
-        idu: String(p.idu),
-        section: String(p.section),
-        numero: String(p.numero),
-        contenance: Number(p.contenance),
-        commune: String(p.nom_com),
-        codeInsee: String(p.code_insee),
+    for (const l of ["dvf-circles", "permis-circles", "copros-circles"]) {
+      map.on("mouseenter", l, () => (map.getCanvas().style.cursor = "pointer"));
+      map.on("mouseleave", l, () => (map.getCanvas().style.cursor = ""));
+    }
+
+    // Clic : points d'intérêt d'abord (popup), sinon parcelle (fiche)
+    map.on("click", (e) => {
+      const pointLayers = ["dvf-circles", "permis-circles", "copros-circles"].filter((l) => map.getLayer(l));
+      const pts = map.queryRenderedFeatures(e.point, { layers: pointLayers });
+      if (pts.length) {
+        const f = pts[0] as MapGeoJSONFeature;
+        const p = f.properties;
+        let content: HTMLElement | null = null;
+        if (f.layer.id === "dvf-circles") {
+          content = popupContent(`Vente du ${p.d}`, [`${eur(p.v)}`, p.p ? `${eur(p.p)}/m²` : "prix/m² non calculable", String(p.t ?? "")]);
+        } else if (f.layer.id === "permis-circles") {
+          content = popupContent(`${p.t ?? "Permis"} du ${p.d}`, [p.nl ? `${p.nl} logement(s)` : "", String(p.k ?? "")].filter(Boolean));
+        } else if (f.layer.id === "copros-circles") {
+          content = popupContent(String(p.n ?? "Copropriété"), [`${p.lots ?? "?"} lots`, p.per ? `Construite : ${p.per}` : ""].filter(Boolean));
+        }
+        if (content) {
+          new maplibregl.Popup({ closeButton: false, offset: 10 }).setLngLat(e.lngLat).setDOMContent(content).addTo(map);
+          return;
+        }
+      }
+      const fs = map.queryRenderedFeatures(e.point, { layers: ["vparcelles-fill", "parcelles-fill"].filter((l) => map.getLayer(l)) });
+      const p = fs[0]?.properties;
+      const idu = (p?.idu ?? p?.id) as string | undefined;
+      if (!idu) return;
+      useUi.getState().select({
+        idu: String(idu),
+        section: p?.section ? String(p.section) : String(idu).slice(8, 10),
+        numero: p?.numero ? String(p.numero) : String(idu).slice(10, 14),
+        contenance: Number(p?.contenance ?? p?.c) || undefined,
+        commune: p?.nom_com ? String(p.nom_com) : undefined,
+        codeInsee: String(idu).slice(0, 5),
       });
     });
 
@@ -119,37 +127,24 @@ export default function MapView() {
       mapRef.current = null;
       readyRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Synchronisation état → carte ──────────────────────────────────────
-  function syncLayers() {
-    const map = mapRef.current;
-    if (!map || !readyRef.current) return;
-    const { basemap, layers, selected } = useUi.getState();
-    const vis = (id: string, on: boolean) => map.getLayer(id) && map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
-    vis("basemap-plan", basemap === "plan");
-    vis("basemap-satellite", basemap === "satellite");
-    const parcels = layers["parcelles"] !== false;
-    vis("parcelles-fill", parcels);
-    vis("parcelles-line", parcels);
-    vis("parcelles-label", parcels);
-    vis("batiments-fill", Boolean(layers["batiments"]) || basemap === "cadastre");
-    // Fond « cadastre seul » : traits plus marqués sur fond neutre.
-    if (map.getLayer("parcelles-line")) {
-      map.setPaintProperty("parcelles-line", "line-opacity", basemap === "cadastre" ? 0.9 : 0.55);
-    }
-    if (map.getLayer("parcelle-selected")) map.setFilter("parcelle-selected", ["==", ["get", "idu"], selected?.idu ?? ""]);
-  }
+  // ── État → carte ──────────────────────────────────────────────────────
+  useEffect(() => useUi.subscribe(sync), []);
 
-  useEffect(syncLayers, [basemap, layers, selected]);
+  // Filtres : on recharge les tuiles (debounce 250 ms)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const map = mapRef.current;
+      if (map && readyRef.current) setVigieTiles(map, filtersKey);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [filtersKey]);
 
+  const flyTo = useUi((s) => s.flyTo);
   useEffect(() => {
     if (flyTo && mapRef.current) mapRef.current.flyTo({ center: [flyTo.lng, flyTo.lat], zoom: flyTo.zoom ?? 17, speed: 1.6, essential: true });
   }, [flyTo]);
-
-  // Le thème n'affecte que l'UI ; les fonds IGN restent identiques.
-  void resolvedTheme;
 
   // MapLibre impose `position: relative` sur son conteneur : on l'enveloppe dans un bloc absolu.
   return (

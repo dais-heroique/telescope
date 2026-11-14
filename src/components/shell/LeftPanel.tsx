@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { LAYERS, LAYER_GROUPS, type LayerDef } from "@/config/layers";
 import { MODULES } from "@/config/modules";
 import { useUi, type Basemap } from "@/lib/store";
+import { ANCIENNETE_BINS, PRIX_BINS } from "@/config/layers";
 
 const BASEMAPS: { id: Basemap; label: string; icon: typeof MapIcon }[] = [
   { id: "plan", label: "Plan", icon: MapIcon },
@@ -15,7 +16,7 @@ const BASEMAPS: { id: Basemap; label: string; icon: typeof MapIcon }[] = [
 ];
 
 export function LeftPanel() {
-  const { module, basemap, setBasemap, layers, toggleLayer } = useUi();
+  const { module, basemap, setBasemap, layers, toggleLayer, dvfColor, setDvfColor } = useUi();
   const groups = Object.entries(LAYER_GROUPS).map(([g, label]) => ({
     g,
     label,
@@ -60,7 +61,25 @@ export function LeftPanel() {
               <p className="mb-1 text-[11px] font-medium text-muted-foreground">{g.label}</p>
               <ul className="space-y-1">
                 {g.items.map((l) => (
-                  <LayerRow key={l.id} layer={l} on={Boolean(layers[l.id])} onToggle={() => toggleLayer(l.id)} />
+                  <LayerRow key={l.id} layer={l} on={Boolean(layers[l.id])} onToggle={() => toggleLayer(l.id)}>
+                    {l.id === "dvf" && layers.dvf && (
+                      <div className="ml-2 mt-1 space-y-1">
+                        <div className="flex gap-1 text-[11px]">
+                          {(["prix", "anciennete"] as const).map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => setDvfColor(m)}
+                              aria-pressed={dvfColor === m}
+                              className={`rounded px-1.5 py-0.5 ${dvfColor === m ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                            >
+                              {m === "prix" ? "Prix/m²" : "Ancienneté"}
+                            </button>
+                          ))}
+                        </div>
+                        <Legend entries={dvfColor === "prix" ? PRIX_BINS : ANCIENNETE_BINS} />
+                      </div>
+                    )}
+                  </LayerRow>
                 ))}
               </ul>
             </div>
@@ -70,8 +89,21 @@ export function LeftPanel() {
   );
 }
 
-function LayerRow({ layer, on, onToggle }: { layer: LayerDef; on: boolean; onToggle: () => void }) {
-  const disabled = layer.status !== "live";
+function Legend({ entries }: { entries: { color: string; label: string }[] }) {
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+      {entries.map((e) => (
+        <span key={e.label} className="inline-flex items-center gap-1">
+          <i className="inline-block size-2.5 rounded-sm" style={{ background: e.color }} />
+          {e.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LayerRow({ layer, on, onToggle, children }: { layer: LayerDef; on: boolean; onToggle: () => void; children?: React.ReactNode }) {
+  const disabled = layer.status === "planned";
   return (
     <li>
       <label className={`flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-sm ${disabled ? "opacity-60" : "cursor-pointer hover:bg-accent"}`}>
@@ -86,15 +118,11 @@ function LayerRow({ layer, on, onToggle }: { layer: LayerDef; on: boolean; onTog
         <Switch checked={on && !disabled} onCheckedChange={onToggle} disabled={disabled} aria-label={layer.label} />
       </label>
       {on && !disabled && layer.legend && (
-        <div className="ml-2 mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-          {layer.legend.map((e) => (
-            <span key={e.label} className="inline-flex items-center gap-1">
-              <i className="inline-block size-2.5 rounded-sm" style={{ background: e.color }} />
-              {e.label}
-            </span>
-          ))}
+        <div className="ml-2 mt-1">
+          <Legend entries={layer.legend} />
         </div>
       )}
+      {children}
     </li>
   );
 }
