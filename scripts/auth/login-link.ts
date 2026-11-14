@@ -6,6 +6,7 @@
 import "dotenv/config";
 import { randomBytes, createHash } from "node:crypto";
 import { createClient } from "@libsql/client";
+import { normalizeLibsqlUrl } from "../../src/lib/libsql-url";
 
 const arg = (n: string) => process.argv.find((a) => a.startsWith(`--${n}=`))?.split("=")[1];
 const email = (arg("email") ?? "").trim().toLowerCase();
@@ -14,7 +15,7 @@ const admin = process.argv.includes("--admin");
 const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
 async function main() {
-  const db = createClient({ url: process.env.TURSO_DATABASE_URL || "file:.data/vigie.db", authToken: process.env.TURSO_AUTH_TOKEN || undefined });
+  const db = createClient({ url: normalizeLibsqlUrl(process.env.TURSO_DATABASE_URL), authToken: process.env.TURSO_AUTH_TOKEN || undefined });
   await db.executeMultiple(`
   create table if not exists users (email text primary key, name text, is_admin integer not null default 0, created_at integer not null default (unixepoch()), last_login_at integer);
   create table if not exists login_tokens (hash text primary key, email text not null, expires_at integer not null, used_at integer);`);

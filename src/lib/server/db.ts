@@ -1,3 +1,4 @@
+import { normalizeLibsqlUrl } from "@/lib/libsql-url";
 import { createClient, type Client, type InValue } from "@libsql/client";
 
 declare global {
@@ -11,7 +12,7 @@ declare global {
  */
 export function db(): Client {
   globalThis.__vigieDb ??= createClient({
-    url: process.env.TURSO_DATABASE_URL || "file:.data/vigie.db",
+    url: normalizeLibsqlUrl(process.env.TURSO_DATABASE_URL),
     authToken: process.env.TURSO_AUTH_TOKEN || undefined,
   });
   return globalThis.__vigieDb;

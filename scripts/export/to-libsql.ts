@@ -7,6 +7,7 @@
 import "dotenv/config";
 import { createClient, type InStatement, type InValue } from "@libsql/client";
 import postgres from "postgres";
+import { normalizeLibsqlUrl } from "../../src/lib/libsql-url";
 import { decodeGeom, encodeGeom, geomBBox } from "../../src/lib/geo/codec";
 import { indexTiles, inlineTile, latToTileY, lonToTileX } from "../../src/lib/geo/tile-index";
 import { scoreParcel } from "../../src/lib/scoring";
@@ -18,7 +19,7 @@ const only = arg("only")?.split(",");
 if (!/^(\d{2}|2[AB]|97\d)$/.test(dep)) throw new Error(`département invalide : ${dep}`);
 
 const pg = postgres(process.env.INGEST_PG_URL!, { max: 2, onnotice: () => {} });
-const lib = createClient({ url: process.env.TURSO_DATABASE_URL || "file:.data/vigie.db", authToken: process.env.TURSO_AUTH_TOKEN || undefined });
+const lib = createClient({ url: normalizeLibsqlUrl(process.env.TURSO_DATABASE_URL), authToken: process.env.TURSO_AUTH_TOKEN || undefined });
 
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 const bool = (v: unknown): number | null => (v === null || v === undefined ? null : v ? 1 : 0);

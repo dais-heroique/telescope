@@ -89,7 +89,7 @@ export async function getVentes(base: ParcelBase, radius = 500, type?: string): 
     const rows = await query<R>(
       `select ${cols} from dvf_mutations m
        where m.tx between ? and ? and m.ty between ? and ? and m.lon between ? and ? and m.lat between ? and ?
-         and m.nature = 'Vente' and m.prix_m2 is not null ${type ? "and m.type_principal = ?" : ""}`,
+         and m.nature = 'Vente' and m.prix_m2 is not null ${type ? "and m.type_principal = ?" : "and m.type_principal in ('Maison', 'Appartement')"}`,
       [lonToTileX(lon - dLon, POINT_LEVEL), lonToTileX(lon + dLon, POINT_LEVEL), latToTileY(lat + dLat, POINT_LEVEL), latToTileY(lat - dLat, POINT_LEVEL), lon - dLon, lon + dLon, lat - dLat, lat + dLat, ...(type ? [type] : [])],
     );
     comparables = rows
@@ -100,7 +100,7 @@ export async function getVentes(base: ParcelBase, radius = 500, type?: string): 
     const all = await communeSales(base.insee);
     parcel = all.filter((s) => s.idus.includes(base.idu)).sort((a, b) => b.date.localeCompare(a.date));
     comparables = all
-      .filter((s) => s.lon !== null && s.lat !== null && s.nature === "Vente" && s.prixM2 !== null && (!type || s.type === type))
+      .filter((s) => s.lon !== null && s.lat !== null && s.nature === "Vente" && s.prixM2 !== null && (type ? s.type === type : s.type === "Maison" || s.type === "Appartement"))
       .map((s) => ({ ...s, distance: haversine(base.centroid, [s.lon!, s.lat!]) }))
       .filter((s) => s.distance <= radius)
       .sort((a, b) => b.date.localeCompare(a.date));
