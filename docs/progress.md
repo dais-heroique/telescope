@@ -13,3 +13,13 @@
 
 **Problèmes / notes**
 - Voir `docs/decisions.md` (MapLibre v5, wrapper de carte).
+
+## Étape 2 — docs/sources.md ✅
+**Fait** : chaque source a été appelée en réel (14/11/2026). Voir `docs/sources.md` (URL, format, licence, MAJ, mode) et la page publique `/sources` (alimentée par `src/config/sources.ts`).
+**Constats importants**
+- DVF : l'arborescence `files.data.gouv.fr/geo-dvf/latest/csv/` marquée « archive » fonctionne encore (fichier 74/2025 : 64 k lignes) ; les fichiers nationaux `full-{année}.csv.gz` servent de repli pérenne.
+- BDNB : export **par département** disponible (567 Mo pour le 74) ; le millésime change dans l'URL.
+- Personnes morales DGFiP : désormais en **Parquet** (version unifiée) → lecture par range-requests.
+- LOVAC : **agrégé communal uniquement** en open data (pas de parcelle) → la vacance parcellaire n'est pas disponible.
+- Cerema DVF+ : 503 au test → optionnel, non bloquant.
+- Overpass (OSM) : non joignable depuis le sandbox ; BPE/Filosofi INSEE : URLs de fichiers à fixer à l'étape 10.
