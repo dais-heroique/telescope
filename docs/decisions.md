@@ -13,3 +13,17 @@ Format : date · décision · raison. Quand une décision est ambiguë, on prend
 - **Mode démo** : sans variables Supabase, le middleware laisse tout accessible (utile pour développer la carte sans backend).
 - **Tailwind v4** (livré par create-next-app 15) avec tokens CSS ; composants shadcn écrits à la main dans `src/components/ui` (même API que shadcn/ui) pour éviter la dépendance réseau au registre.
 - **Polices** : package `geist` (fichiers embarqués) au lieu de `next/font/google` (pas d'appel réseau au build).
+
+## Étape 3 — ingestion
+- **Idempotence** : upsert (`on conflict`) pour les entités à clé (parcelles, bâtiments, mutations, DPE, zones, permis) ; « remplacement par département » (delete + insert) pour les tables de liens et les snapshots (bat_parcelle, rnic, personnes morales, loyers). Chaque étape journalise `ingest_runs`.
+- **Chargement massif** : CSV → table de staging UNLOGGED via `COPY` (flux, pas de parsing en mémoire), puis `INSERT … SELECT` SQL. Le cadastre (une Feature par ligne) est lu en flux ligne à ligne.
+- **Téléchargements** : cache `.data/` (ou `INGEST_CACHE_DIR`), **reprise par Range + nouvelles tentatives** — constaté : le proxy a coupé un transfert de 376 Mo à 230 Ko sans erreur HTTP.
+- **Résolution d'URL** : les URLs `static.data.gouv.fr/resources/…` changent à chaque publication → résolues par l'API data.gouv (`lib/datagouv.ts`). L'export BDNB par département est déduit du motif de l'export France.
+- **DVF — prix au m²** (règles SQL = `summarizeMutation`, testée) : seulement nature « Vente », valeur > 0, surface bâtie logement > 9 m², aucun local d'activité mêlé. Valeur d'une mutation à plusieurs dispositions = somme (une valeur par disposition). Le prix d'une mutation multi-parcelles s'applique à chaque parcelle (limite connue).
+- **Bâti ↔ parcelle** : un groupe de bâtiments BDNB lié à N parcelles est réparti à parts égales (emprise, logements). Approximation assumée (pas d'intersection géométrique, trop coûteuse à l'échelle du département).
+- **Passoire thermique** : au moins un DPE F ou G (existant ou neuf) de moins de 10 ans rattaché à la parcelle (rattachement par point BAN du DPE dans la parcelle). Étiquette « dernière » = DPE le plus récent.
+- **Propriétaire PM principal** : on privilégie les « personnes morales non remarquables » (sociétés : SCI, SAS…) sur le public (communes, État, HLM…).
+- **Sitadel** : `IDU = INSEE + 000 + section(2) + numéro(4)` (le préfixe de commune fusionnée n'est pas fourni). Les fichiers démolir/aménager utilisent `NUM_PD/NUM_PA` et n'ont pas de `TYPE_DAU` : gérés dans `sitadel.ts`.
+- **Permis « voisinage »** : comptage par cellules 300 m (EPSG:3857, ≈ 210 m réels) en 3×3, permis des 3 dernières années — plus rapide qu'un `ST_DWithin` par parcelle.
+- **LOVAC** : taux = vacants/parc privé au 01/01/2024 (même date de référence) ; « s » = secret statistique ignoré.
+- **Volumes réels du 74** (14/11/2026) : 1 561 778 parcelles, 361 853 groupes de bâtiments, 139 613 mutations DVF (juil. 2021 → juin 2026), 251 948 DPE (dont 205 401 existants = total API), 32 839 zones PLU, 49 910 autorisations Sitadel, 16 353 copropriétés RNIC, 300 955 couples parcelle×SIREN.
