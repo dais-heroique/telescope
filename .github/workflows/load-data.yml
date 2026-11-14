@@ -3,6 +3,9 @@ name: Charger les données dans Turso
 # Construit les données d'un département (ingestion PostGIS éphémère) puis les exporte vers Turso.
 # Secrets à créer dans Settings → Secrets and variables → Actions : TURSO_DATABASE_URL, TURSO_AUTH_TOKEN.
 on:
+  # Déclenchement par un push sur ce fichier (le département est lu dedans) ou à la main
+  push:
+    paths: [".github/load-trigger.txt"]
   workflow_dispatch:
     inputs:
       dep:
@@ -37,7 +40,13 @@ jobs:
       - run: npm ci
       - name: Schéma PostGIS d'ingestion
         run: PGPASSWORD=postgres psql -h localhost -U postgres -d vigie -v ON_ERROR_STOP=1 -f scripts/ingest/schema.sql
+      - name: Département à charger
+        id: dep
+        run: |
+          DEP="${{ inputs.dep }}"
+          if [ -z "$DEP" ]; then DEP="$(tr -d '[:space:]' < .github/load-trigger.txt)"; fi
+          echo "dep=$DEP" >> "$GITHUB_OUTPUT"
       - name: Ingestion du département
-        run: npx tsx scripts/ingest/all.ts --dep="${{ inputs.dep }}"
+        run: npx tsx scripts/ingest/all.ts --dep="${{ steps.dep.outputs.dep }}"
       - name: Export vers Turso
-        run: npx tsx scripts/export/to-libsql.ts --dep="${{ inputs.dep }}"
+        run: npx tsx scripts/export/to-libsql.ts --dep="${{ steps.dep.outputs.dep }}"
