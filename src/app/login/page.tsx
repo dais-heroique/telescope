@@ -9,11 +9,17 @@ import { Label } from "@/components/ui/label";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [code, setCode] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setState("sending");
-    const r = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    const r = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, bootstrap: code || undefined }) });
+    const j = (await r.json().catch(() => ({}))) as { link?: string };
+    if (j.link) {
+      window.location.href = j.link;
+      return;
+    }
     setState(r.ok ? "sent" : "error");
   }
 
@@ -33,6 +39,10 @@ export default function LoginPage() {
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vous@exemple.fr" />
             </div>
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">Premier accès administrateur</summary>
+              <Input className="mt-2" placeholder="Code d'amorçage" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" />
+            </details>
             {state === "error" && <p className="text-sm text-destructive">Une erreur est survenue, réessayez.</p>}
             <Button type="submit" className="w-full" disabled={state === "sending"}>
               {state === "sending" ? "Envoi…" : "Recevoir le lien"}

@@ -1,0 +1,25 @@
+name: Charger la démo dans Turso
+
+# Charge data/demo.db (petit extrait d'Annecy) dans Turso en quelques minutes.
+# Déclenché par un push sur .github/load-demo-trigger.txt ou à la main.
+on:
+  push:
+    paths: [".github/load-demo-trigger.txt"]
+  workflow_dispatch:
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Chargement de la démo
+        run: npx tsx scripts/export/sqlite-to-turso.ts data/demo.db
