@@ -28,7 +28,7 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       INGEST_PG_URL: postgresql://postgres:postgres@localhost:5432/vigie
-      INGEST_CACHE_DIR: ${{ runner.temp }}/ingest-cache
+      INGEST_CACHE_DIR: /tmp/ingest-cache
       TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
       TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
     steps:
