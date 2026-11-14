@@ -63,6 +63,11 @@ describe("agrégation d'une mutation DVF", () => {
     ]);
     expect(s.prix_m2).toBeNull();
   });
+  it("locaux d'activité seuls : prix/m² sur la surface bâtie totale", () => {
+    const s = summarizeMutation([{ nature_mutation: "Vente", valeur_fonciere: "500000", type_local: "Local industriel. commercial ou assimilé", surface_reelle_bati: "250" }, { nature_mutation: "Vente", valeur_fonciere: "500000", type_local: "Dépendance", surface_reelle_bati: "" }]);
+    expect(s.type_principal).toBe("Local industriel. commercial ou assimilé");
+    expect(s.prix_m2).toBe(2000);
+  });
   it("ignore une surface minuscule ou une valeur nulle", () => {
     expect(summarizeMutation([{ ...base, type_local: "Appartement", surface_reelle_bati: "5" }]).prix_m2).toBeNull();
     expect(summarizeMutation([{ nature_mutation: "Vente", valeur_fonciere: "0", type_local: "Maison", surface_reelle_bati: "90" }]).prix_m2).toBeNull();

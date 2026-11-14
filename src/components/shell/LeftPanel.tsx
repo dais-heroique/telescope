@@ -2,6 +2,8 @@
 
 import { Layers, Map as MapIcon, Satellite, SquareDashed } from "lucide-react";
 import { AddressSearch } from "./AddressSearch";
+import { FiltersPanel } from "./FiltersPanel";
+import { ResultsPanel } from "./ResultsPanel";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { LAYERS, LAYER_GROUPS, type LayerDef } from "@/config/layers";
@@ -16,16 +18,25 @@ const BASEMAPS: { id: Basemap; label: string; icon: typeof MapIcon }[] = [
 ];
 
 export function LeftPanel() {
-  const { module, basemap, setBasemap, layers, toggleLayer, dvfColor, setDvfColor } = useUi();
+  const { module, basemap, setBasemap, layers, toggleLayer, dvfColor, setDvfColor, leftTab, setLeftTab, filters, zone } = useUi();
+  const nFilters = Object.keys(filters).length;
   const groups = Object.entries(LAYER_GROUPS).map(([g, label]) => ({
     g,
     label,
     items: LAYERS.filter((l) => l.group === g),
   }));
   return (
-    <aside className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-r bg-card p-3" aria-label="Recherche, fonds et calques">
+    <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden border-r bg-card p-3" aria-label="Recherche, calques, filtres et résultats">
       <AddressSearch />
-
+      <div role="tablist" className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1 text-xs font-medium">
+        {([["calques", "Calques"], ["filtres", `Filtres${nFilters ? ` (${nFilters})` : ""}`], ["resultats", zone ? "Résultats · zone" : "Résultats"]] as const).map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={leftTab === k} onClick={() => setLeftTab(k)} className={`rounded-md px-2 py-1 transition-colors ${leftTab === k ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{l}</button>
+        ))}
+      </div>
+      {leftTab === "filtres" && <div className="min-h-0 flex-1 overflow-y-auto pr-1"><FiltersPanel /></div>}
+      {leftTab === "resultats" && <ResultsPanel />}
+      {leftTab === "calques" && (
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
       <section>
         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Module · {MODULES[module].label}</p>
         <p className="text-xs text-muted-foreground">{MODULES[module].description}</p>
@@ -85,6 +96,8 @@ export function LeftPanel() {
             </div>
           ))}
       </section>
+      </div>
+      )}
     </aside>
   );
 }

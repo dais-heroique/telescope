@@ -4,7 +4,8 @@ import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MlMap, MapGeoJSONFeature, MapLayerMouseEvent } from "maplibre-gl";
 import { baseStyle } from "@/lib/map/styles";
-import { addVigieLayers, setVigieTiles, syncVigieLayers } from "@/lib/map/vigie-layers";
+import { addVigieLayers, setGeoJson, setVigieTiles, syncVigieLayers } from "@/lib/map/vigie-layers";
+import { circlePolygon, haversine } from "@/lib/parcelle/geo";
 import { encodeFilters } from "@/lib/filters";
 import { useUi } from "@/lib/store";
 
@@ -60,10 +61,116 @@ export default function MapView() {
     map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "bottom-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 
+    // ── Emprise visible → store (liste de résultats) ──
+    let vpTimer: ReturnType<typeof setTimeout> | undefined;
+    const pushViewport = () => {
+      const b = map.getBounds();
+      useUi.getState().setViewport({ bbox: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], zoom: map.getZoom() });
+    };
+    map.on("moveend", () => {
+      clearTimeout(vpTimer);
+      vpTimer = setTimeout(pushViewport, 350);
+    });
+
+    // ── Outils de dessin : polygone, cercle, isochrone ──
+    const draw = { pts: [] as [number, number][], center: null as [number, number] | null, hover: null as [number, number] | null };
+    const drawDraft = () => {
+      const dm = useUi.getState().drawMode;
+      const feats: GeoJSON.Feature[] = [];
+      if (dm === "polygon" && draw.pts.length) {
+        const pts = draw.hover ? [...draw.pts, draw.hover] : draw.pts;
+        feats.push({ type: "Feature", properties: {}, geometry: pts.length >= 3 ? { type: "Polygon", coordinates: [[...pts, pts[0]]] } : { type: "LineString", coordinates: pts } });
+        for (const p of draw.pts) feats.push({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: p } });
+      }
+      if (dm === "circle" && draw.center && draw.hover) {
+        feats.push({ type: "Feature", properties: {}, geometry: circlePolygon(draw.center, haversine(draw.center, draw.hover)) });
+        feats.push({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: draw.center } });
+      }
+      setGeoJson(map, "draft", { type: "FeatureCollection", features: feats });
+    };
+    const resetDraw = () => {
+      draw.pts = [];
+      draw.center = null;
+      draw.hover = null;
+      drawDraft();
+    };
+    const finishPolygon = () => {
+      if (draw.pts.length >= 3) useUi.getState().setZone({ type: "Polygon", coordinates: [[...draw.pts, draw.pts[0]]] });
+      resetDraw();
+    };
+    const pushSectors = (secs: ReturnType<typeof useUi.getState>["sectors"]) =>
+      setGeoJson(map, "sectors", {
+        type: "FeatureCollection",
+        features: secs.map((x) => ({ type: "Feature", properties: { color: x.color, label: `${x.name}${x.assignedTo ? ` · ${x.assignedTo.split("@")[0]}` : ""}` }, geometry: x.polygon })),
+      });
+    const unsubDraw = useUi.subscribe((s, prev) => {
+      if (s.drawMode !== prev.drawMode) {
+        resetDraw();
+        map.getCanvas().style.cursor = s.drawMode ? "crosshair" : "";
+        if (s.drawMode) map.doubleClickZoom.disable();
+        else map.doubleClickZoom.enable();
+      }
+      if (s.finishNonce !== prev.finishNonce && s.drawMode === "polygon") finishPolygon();
+      if (s.sectors !== prev.sectors && readyRef.current) pushSectors(s.sectors);
+      if (s.zone !== prev.zone && readyRef.current) {
+        setGeoJson(map, "zone", { type: "FeatureCollection", features: s.zone ? [{ type: "Feature", properties: {}, geometry: s.zone }] : [] });
+        if (s.zone && !prev.zone) {
+          const pts = s.zone.coordinates[0];
+          const b = new maplibregl.LngLatBounds(pts[0] as [number, number], pts[0] as [number, number]);
+          pts.forEach((p) => b.extend(p as [number, number]));
+          map.fitBounds(b, { padding: 80, maxZoom: 17, duration: 600 });
+        }
+      }
+    });
+    const onKey = (e: KeyboardEvent) => {
+      const dm = useUi.getState().drawMode;
+      if (!dm) return;
+      if (e.key === "Escape") useUi.getState().setDrawMode(null);
+      if (e.key === "Enter" && dm === "polygon") finishPolygon();
+    };
+    window.addEventListener("keydown", onKey);
+    map.on("mousemove", (e) => {
+      if (!useUi.getState().drawMode) return;
+      draw.hover = [e.lngLat.lng, e.lngLat.lat];
+      drawDraft();
+    });
+    const handleDrawClick = async (e: MapLayerMouseEvent) => {
+      const dm = useUi.getState().drawMode;
+      const here: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      if (dm === "polygon") {
+        if (draw.pts.length >= 3) {
+          const first = map.project(draw.pts[0]);
+          if (Math.hypot(first.x - e.point.x, first.y - e.point.y) < 12) return finishPolygon();
+        }
+        draw.pts.push(here);
+        drawDraft();
+      } else if (dm === "circle") {
+        if (!draw.center) {
+          draw.center = here;
+        } else {
+          const r = haversine(draw.center, here);
+          if (r >= 30) useUi.getState().setZone(circlePolygon(draw.center, r));
+          resetDraw();
+        }
+      } else if (dm === "isochrone") {
+        const { mode, minutes } = useUi.getState().iso;
+        map.getCanvas().style.cursor = "progress";
+        try {
+          const r = await fetch(`/api/isochrone?lon=${here[0]}&lat=${here[1]}&mode=${mode}&minutes=${minutes}`);
+          if (r.ok) useUi.getState().setZone(((await r.json()) as { geometry: GeoJSON.Polygon }).geometry);
+          else alert("Isochrone indisponible pour le moment.");
+        } finally {
+          map.getCanvas().style.cursor = useUi.getState().drawMode ? "crosshair" : "";
+        }
+      }
+    };
+
     map.on("load", () => {
       addVigieLayers(map, encodeFilters(useUi.getState().filters));
       readyRef.current = true;
       sync();
+      pushViewport();
+      pushSectors(useUi.getState().sectors);
     });
 
     // Survol des parcelles (états de feature : pas de re-rendu de tuile)
@@ -90,6 +197,7 @@ export default function MapView() {
 
     // Clic : points d'intérêt d'abord (popup), sinon parcelle (fiche)
     map.on("click", (e) => {
+      if (useUi.getState().drawMode) return void handleDrawClick(e as MapLayerMouseEvent);
       const pointLayers = ["dvf-circles", "permis-circles", "copros-circles"].filter((l) => map.getLayer(l));
       const pts = map.queryRenderedFeatures(e.point, { layers: pointLayers });
       if (pts.length) {
@@ -123,6 +231,9 @@ export default function MapView() {
     });
 
     return () => {
+      unsubDraw();
+      window.removeEventListener("keydown", onKey);
+      clearTimeout(vpTimer);
       map.remove();
       mapRef.current = null;
       readyRef.current = false;

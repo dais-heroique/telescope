@@ -8,7 +8,8 @@ import "dotenv/config";
 import { createClient, type InStatement, type InValue } from "@libsql/client";
 import postgres from "postgres";
 import { decodeGeom, encodeGeom, geomBBox } from "../../src/lib/geo/codec";
-import { indexTiles, latToTileY, lonToTileX } from "../../src/lib/geo/tile-index";
+import { indexTiles, inlineTile, latToTileY, lonToTileX } from "../../src/lib/geo/tile-index";
+import { scoreParcel } from "../../src/lib/scoring";
 import { DATA_INDEXES, DATA_TABLES, FEATURE_COLUMNS, LEVELS, POINT_LEVEL } from "../../src/lib/server/data-schema";
 
 const arg = (n: string) => process.argv.find((a) => a.startsWith(`--${n}=`))?.split("=")[1];
@@ -69,20 +70,36 @@ const steps: Record<string, () => Promise<void>> = {
     await lib.execute({ sql: "delete from idx_parcelles where id in (select idu from parcelles where dep = ?)", args: [dep] });
     await lib.execute({ sql: "delete from parcelles where dep = ?", args: [dep] });
     const f = FEATURE_COLUMNS.map((c) => `f.${c}`).join(", ");
-    const cols = ["idu", "dep", "insee", "section", "numero", "contenance", "lon", "lat", "tx", "ty", "geom", ...FEATURE_COLUMNS];
+    const cols = ["idu", "dep", "insee", "section", "numero", "contenance", "lon", "lat", "tx", "ty", "t16x", "t16y", "geom", ...FEATURE_COLUMNS];
     const boolCols = new Set(["is_copro", "is_pm", "is_passoire", "is_divisible", "is_monopropriete", "is_dent_creuse"]);
     const dateCols = new Set(["last_sale_date", "dpe_latest_date", "last_permis_date"]);
     const jsonCols = new Set(["score_factors"]);
     await copy(
       "parcelles",
-      pg.unsafe(`select p.idu, p.dep, p.insee, p.section, p.numero, p.contenance, st_x(p.pt) as lon, st_y(p.pt) as lat, st_asgeojson(p.geom, 6) as g, ${f}
-                 from parcelles p join parcel_features f using (idu) where p.dep = '${dep}'`),
+      pg.unsafe(`select p.idu, p.dep, p.insee, p.section, p.numero, p.contenance, st_x(p.pt) as lon, st_y(p.pt) as lat, st_asgeojson(p.geom, 6) as g, ${f},
+                        cs.cycle_years as cs_cycle, cs.turnover_pct as cs_turn, cs.prix_m2_median as cs_px, cs.vacance_pct as cs_vac
+                 from parcelles p join parcel_features f using (idu) left join commune_stats cs on cs.insee = p.insee where p.dep = '${dep}'`),
       cols,
       (r) => {
         const g = JSON.parse(r.g as string) as GeoJSON.Geometry;
         const [tx, ty] = tile12(num(r.lon), num(r.lat));
+        const bb = geomBBox(g);
+        const inl = inlineTile(bb);
+        // Score + facteurs : seulement pour les biens « commercialisables » (bâtis, ou terrains détectés ; hors propriétaires publics)
+        const publicOwner = r.pm_groupe != null && r.pm_groupe !== "personnes morales non remarquables";
+        const relevant = !publicOwner && (Number(r.nb_batiments) > 0 || r.is_dent_creuse || r.is_divisible);
+        const sc = relevant
+          ? scoreParcel(
+              { nbBatiments: Number(r.nb_batiments) || 0, holdYears: num(r.hold_years), lastSaleDate: iso(r.last_sale_date), lastSalePrixM2: num(r.last_sale_prix_m2), lastSaleType: (r.last_sale_type as string) ?? null, dpeLatest: (r.dpe_latest as string) ?? null, isPassoire: Boolean(r.is_passoire), dpeWorst: (r.dpe_worst as string) ?? null, isPm: Boolean(r.is_pm), pmGroupe: (r.pm_groupe as string) ?? null, pmForme: (r.pm_forme as string) ?? null, nbPermis5y: Number(r.nb_permis_5y) || 0, nbPermisProches: Number(r.nb_permis_proches) || 0, anneeConstruction: num(r.annee_construction), isDivisible: Boolean(r.is_divisible), isMonopropriete: Boolean(r.is_monopropriete), isDentCreuse: Boolean(r.is_dent_creuse) },
+              { cycleYears: num(r.cs_cycle), turnoverPct: num(r.cs_turn), prixM2Median: num(r.cs_px), vacancePct: num(r.cs_vac) },
+            )
+          : null;
         const values: InValue[] = cols.map((c) => {
+          if (c === "score") return sc?.score ?? null;
+          if (c === "score_factors") return sc ? JSON.stringify(sc.factors) : null;
           if (c === "geom") return encodeGeom(g);
+          if (c === "t16x") return inl?.x ?? null;
+          if (c === "t16y") return inl?.y ?? null;
           if (c === "tx") return tx;
           if (c === "ty") return ty;
           if (boolCols.has(c)) return bool(r[c]);
@@ -91,7 +108,7 @@ const steps: Record<string, () => Promise<void>> = {
           const v = r[c];
           return typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v) && !["idu", "insee", "section", "numero", "dep", "copro_numero", "pm_siren"].includes(c) ? Number(v) : ((v ?? null) as InValue);
         });
-        return { values, extra: idxStmts("idx_parcelles", r.idu as string, geomBBox(g), LEVELS.parcelles) };
+        return { values, extra: inl ? [] : idxStmts("idx_parcelles", r.idu as string, bb, LEVELS.parcelles) };
       },
     );
   },
@@ -100,12 +117,14 @@ const steps: Record<string, () => Promise<void>> = {
     await lib.execute({ sql: "delete from idx_batiments where id in (select bg_id from batiments where dep = ?)", args: [dep] });
     await lib.execute({ sql: "delete from batiments where dep = ?", args: [dep] });
     await lib.execute({ sql: "delete from bat_parcelle where dep = ?", args: [dep] });
-    const cols = ["bg_id", "dep", "insee", "geom", "surface_sol", "annee_construction", "nb_log", "nb_niveau", "usage_principal", "hauteur_mean", "hauteur_max", "rnic_numero", "rnic_nb_lots"];
+    const cols = ["bg_id", "dep", "insee", "t16x", "t16y", "geom", "surface_sol", "annee_construction", "nb_log", "nb_niveau", "usage_principal", "hauteur_mean", "hauteur_max", "rnic_numero", "rnic_nb_lots"];
     await copy("batiments", pg.unsafe(`select bg_id, dep, insee, st_asgeojson(geom, 6) as g, surface_sol, annee_construction, nb_log, nb_niveau, usage_principal, hauteur_mean, hauteur_max, rnic_numero, rnic_nb_lots from batiments where dep = '${dep}'`), cols, (r) => {
       const g = JSON.parse(r.g as string) as GeoJSON.Geometry;
+      const bb = geomBBox(g);
+      const inl = inlineTile(bb);
       return {
-        values: [r.bg_id, r.dep, r.insee, encodeGeom(g), num(r.surface_sol), num(r.annee_construction), num(r.nb_log), num(r.nb_niveau), r.usage_principal, num(r.hauteur_mean), num(r.hauteur_max), r.rnic_numero, num(r.rnic_nb_lots)] as InValue[],
-        extra: idxStmts("idx_batiments", r.bg_id as string, geomBBox(g), LEVELS.batiments),
+        values: [r.bg_id, r.dep, r.insee, inl?.x ?? null, inl?.y ?? null, encodeGeom(g), num(r.surface_sol), num(r.annee_construction), num(r.nb_log), num(r.nb_niveau), r.usage_principal, num(r.hauteur_mean), num(r.hauteur_max), r.rnic_numero, num(r.rnic_nb_lots)] as InValue[],
+        extra: inl ? [] : idxStmts("idx_batiments", r.bg_id as string, bb, LEVELS.batiments),
       };
     });
     await copy("bat_parcelle", pg.unsafe(`select bg_id, idu, principale, dep from bat_parcelle where dep = '${dep}'`), ["bg_id", "idu", "principale", "dep"], (r) => ({ values: [r.bg_id, r.idu, bool(r.principale), r.dep] as InValue[] }));

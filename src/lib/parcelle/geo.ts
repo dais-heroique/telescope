@@ -80,3 +80,16 @@ export function pointInGeometry(pt: [number, number], g: GeoJSON.Geometry): bool
 export function bboxCenter(b: BBox): [number, number] {
   return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
 }
+
+/** Polygone approximant un cercle (rayon en mètres) autour d'un centre [lon, lat]. */
+export function circlePolygon(center: [number, number], radiusM: number, steps = 64): GeoJSON.Polygon {
+  const kLat = 110574;
+  const kLon = 111320 * Math.cos((center[1] * Math.PI) / 180);
+  const ring: [number, number][] = [];
+  for (let i = 0; i < steps; i++) {
+    const a = (i / steps) * 2 * Math.PI;
+    ring.push([center[0] + (Math.cos(a) * radiusM) / kLon, center[1] + (Math.sin(a) * radiusM) / kLat]);
+  }
+  ring.push(ring[0]);
+  return { type: "Polygon", coordinates: [ring] };
+}

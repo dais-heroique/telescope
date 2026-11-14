@@ -8,9 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DPE_COLORS } from "@/config/layers";
+import { MailDialog } from "@/components/courriers/MailDialog";
+import { crm, useCrmMutation, useLeadByIdu, useUsers } from "@/components/crm/hooks";
+import { STAGES } from "@/lib/crm/types";
 import { aerialBBox, aerialUrl, projectRings } from "@/lib/parcelle/geo";
 import { fmtDate, fmtEur, fmtM2 } from "@/lib/parcelle/format";
-import type { Building, EnergyReport, EnvReport, OwnerReport, ParcelBase, RentReport, RiskReport, SalesReport, Synthese, UrbanReport } from "@/lib/parcelle/types";
+import type { Building, BusinessReport, EnergyReport, EnvReport, OwnerReport, ParcelBase, RentReport, RiskReport, SalesReport, Synthese, UrbanReport } from "@/lib/parcelle/types";
 
 async function getJson<T>(url: string): Promise<T> {
   const r = await fetch(url);
@@ -182,7 +185,7 @@ function VentesTab({ base }: { base: ParcelBase }) {
               <h3 className="text-sm font-semibold">Ventes comparables</h3>
               <div className="flex gap-1">
                 <select aria-label="Rayon" value={radius} onChange={(e) => setRadius(Number(e.target.value))} className="rounded-md border bg-card px-1.5 py-1 text-xs">{[200, 500, 1000, 2000].map((r) => <option key={r} value={r}>{r} m</option>)}</select>
-                <select aria-label="Type de bien" value={type} onChange={(e) => setType(e.target.value)} className="rounded-md border bg-card px-1.5 py-1 text-xs"><option value="">Tous logements</option><option value="Maison">Maisons</option><option value="Appartement">Appartements</option></select>
+                <select aria-label="Type de bien" value={type} onChange={(e) => setType(e.target.value)} className="rounded-md border bg-card px-1.5 py-1 text-xs"><option value="">Tous logements</option><option value="Maison">Maisons</option><option value="Appartement">Appartements</option><option value="Local industriel. commercial ou assimilé">Locaux d&apos;activité</option></select>
               </div>
             </div>
             <div className="mb-2 grid grid-cols-3 gap-2 text-center text-xs">
@@ -277,6 +280,7 @@ function PermisList({ rows }: { rows: { id: string; type: string | null; kind: s
 // ───────────────────────── Propriétaire ─────────────────────────
 function ProprietaireTab({ base }: { base: ParcelBase }) {
   const q = useSection<OwnerReport>(base.idu, "proprietaire");
+  const [mail, setMail] = useState(false);
   return (
     <State q={q}>
       {q.data && (
@@ -301,7 +305,8 @@ function ProprietaireTab({ base }: { base: ParcelBase }) {
               {e.annonces && e.annonces.length > 0 && <div><p className="mt-1 font-medium">BODACC</p><ul>{e.annonces.map((a, i) => <li key={i}>{fmtDate(a.date)} · {a.famille} · {a.type}</li>)}</ul></div>}
             </div>
           ))}
-          <div className="rounded-lg bg-muted p-3 text-xs"><p className="font-medium">Destinataire du courrier</p><p>{q.data.courrier.destinataire}</p><p>{q.data.courrier.adresse}</p></div>
+          <div className="rounded-lg bg-muted p-3 text-xs"><p className="font-medium">Destinataire du courrier</p><p>{q.data.courrier.destinataire}</p><p>{q.data.courrier.adresse}</p>{base.mode === "imported" && <Button size="sm" className="mt-2" onClick={() => setMail(true)}>Générer le courrier</Button>}</div>
+          {mail && <MailDialog scope={{ idus: [base.idu] }} onClose={() => setMail(false)} />}
         </div>
       )}
     </State>
@@ -382,8 +387,90 @@ function EnvTab({ base }: { base: ParcelBase }) {
   );
 }
 
+// ───────────────────────── Entreprise ─────────────────────────
+function EntrepriseTab({ base }: { base: ParcelBase }) {
+  const q = useSection<BusinessReport>(base.idu, "entreprise");
+  return (
+    <State q={q}>
+      {q.data && (
+        <div className="space-y-4 text-sm">
+          <section>
+            <h3 className="mb-1 font-semibold">Occupants à proximité ({q.data.radius} m)</h3>
+            {q.data.occupants.length === 0 && <p className="text-xs text-muted-foreground">Aucun établissement actif trouvé (SIRENE).</p>}
+            <ul className="space-y-1.5">
+              {q.data.occupants.map((o) => (
+                <li key={o.siret} className="rounded-lg border p-2 text-xs">
+                  <p className="font-medium">{o.name} {o.isSiege && <Badge variant="secondary">siège</Badge>}</p>
+                  <p className="text-muted-foreground">{o.adresse} · NAF {o.naf ?? "?"}{o.effectif ? ` · effectif ${o.effectif}` : ""}{o.since ? ` · depuis ${fmtDate(o.since)}` : ""}</p>
+                  <a className="underline" href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${o.siren}`} target="_blank" rel="noreferrer">SIREN {o.siren}</a>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section>
+            <h3 className="mb-1 font-semibold">DPE tertiaire</h3>
+            {q.data.dpeTertiaire.length === 0 && <p className="text-xs text-muted-foreground">Aucun DPE tertiaire rattaché.</p>}
+            <ul className="space-y-1.5">{q.data.dpeTertiaire.map((d) => <li key={d.numero} className="flex items-center gap-2 rounded-lg border p-2 text-xs"><DpeChip label={d.etiquette} /><span>{d.secteur ?? "tertiaire"}{d.surface ? ` · ${Math.round(d.surface)} m²` : ""} · {fmtDate(d.date)}</span></li>)}</ul>
+          </section>
+          <p className="text-xs text-muted-foreground">Transactions de locaux d&apos;activité : onglet Ventes → filtre « Locaux d&apos;activité ». Propriétaire : onglet Propriétaire (fichiers DGFiP des personnes morales).</p>
+        </div>
+      )}
+    </State>
+  );
+}
+
+// ───────────────────────── CRM ─────────────────────────
+function CrmTab({ base }: { base: ParcelBase }) {
+  const q = useLeadByIdu(base.idu);
+  const users = useUsers();
+  const add = useCrmMutation(() => crm.addLead(base.idu, { title: base.address ?? undefined }));
+  const patch = useCrmMutation((b: Record<string, unknown>) => crm.patchLead(q.data!.lead!.id, b));
+  const note = useCrmMutation((b: string) => crm.addNote(q.data!.lead!.id, b));
+  const task = useCrmMutation((b: Record<string, unknown>) => crm.addTask({ ...b, leadId: q.data!.lead!.id }));
+  const toggle = useCrmMutation((v: { id: string; done: boolean }) => crm.patchTask(v.id, { done: v.done }));
+  const [n, setN] = useState("");
+  const [t, setT] = useState({ title: "", dueAt: "" });
+  return (
+    <State q={q}>
+      {!q.data?.lead ? (
+        <div className="space-y-2 text-sm">
+          <p className="text-muted-foreground">Ce bien n&apos;est pas encore suivi dans le CRM.</p>
+          <Button onClick={() => add.mutate(undefined)} disabled={add.isPending}>Ajouter au CRM</Button>
+        </div>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <label>Étape<select className="h-8 w-full rounded-md border bg-card px-2" value={q.data.lead.stage} onChange={(e) => patch.mutate({ stage: e.target.value })}>{STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
+            <label>Responsable<select className="h-8 w-full rounded-md border bg-card px-2" value={q.data.lead.assignedTo ?? ""} onChange={(e) => patch.mutate({ assignedTo: e.target.value || null })}><option value="">—</option>{users.data?.users.map((u) => <option key={u.email} value={u.email}>{u.email.split("@")[0]}</option>)}</select></label>
+          </div>
+          <section>
+            <h3 className="mb-1 font-semibold">Tâches</h3>
+            <ul className="space-y-1">{q.data.tasks.map((x) => <li key={x.id} className="flex items-center gap-2"><input type="checkbox" checked={x.done} onChange={(e) => toggle.mutate({ id: x.id, done: e.target.checked })} /><span className={x.done ? "text-muted-foreground line-through" : ""}>{x.title}</span>{x.dueAt && <span className="ml-auto text-xs text-muted-foreground">{fmtDate(x.dueAt)}</span>}</li>)}</ul>
+            <form className="mt-1.5 flex gap-1.5" onSubmit={(e) => { e.preventDefault(); if (t.title.trim()) { task.mutate({ title: t.title, dueAt: t.dueAt || undefined }); setT({ title: "", dueAt: "" }); } }}>
+              <Input className="h-8 text-xs" placeholder="Rappel / tâche…" value={t.title} onChange={(e) => setT({ ...t, title: e.target.value })} />
+              <Input className="h-8 w-32 text-xs" type="date" value={t.dueAt} onChange={(e) => setT({ ...t, dueAt: e.target.value })} aria-label="Échéance" />
+              <Button size="sm" type="submit">+</Button>
+            </form>
+          </section>
+          <section>
+            <h3 className="mb-1 font-semibold">Notes</h3>
+            <form className="flex gap-1.5" onSubmit={(e) => { e.preventDefault(); if (n.trim()) { note.mutate(n); setN(""); } }}>
+              <Input className="h-8 text-xs" placeholder="Ajouter une note…" value={n} onChange={(e) => setN(e.target.value)} /><Button size="sm" type="submit">Ajouter</Button>
+            </form>
+            <NotesList leadId={q.data.lead.id} />
+          </section>
+        </div>
+      )}
+    </State>
+  );
+}
+function NotesList({ leadId }: { leadId: string }) {
+  const q = useQuery({ queryKey: ["crm", "notes", leadId], queryFn: () => getJson<{ notes: { id: string; body: string; author: string | null; createdAt: number }[] }>(`/api/crm/leads/${leadId}/notes`).then((r) => r.notes) });
+  return <ul className="mt-2 space-y-1.5 text-xs">{q.data?.map((x) => <li key={x.id} className="rounded border p-2"><p>{x.body}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{x.author?.split("@")[0]} · {new Date(x.createdAt * 1000).toLocaleString("fr-FR")}</p></li>)}</ul>;
+}
+
 // ───────────────────────── Fiche ─────────────────────────
-const TABS = ["Synthèse", "Bâti", "Ventes", "Énergie", "Urbanisme", "Propriétaire", "Risques", "Loyers", "Environnement"] as const;
+const TABS = ["Synthèse", "Bâti", "Ventes", "Énergie", "Urbanisme", "Propriétaire", "Risques", "Loyers", "Environnement", "Entreprise", "CRM"] as const;
 
 export function ParcelDetail({ idu, compact = false }: { idu: string; compact?: boolean }) {
   const base = useQuery({ queryKey: ["parcelle", idu, "base"], queryFn: () => getJson<ParcelBase>(`/api/parcelle/${idu}`) });
@@ -409,6 +496,8 @@ export function ParcelDetail({ idu, compact = false }: { idu: string; compact?: 
           <TabsContent value="Risques">{tab === "Risques" && <RisquesTab base={b} />}</TabsContent>
           <TabsContent value="Loyers">{tab === "Loyers" && <LoyersTab base={b} />}</TabsContent>
           <TabsContent value="Environnement">{tab === "Environnement" && <EnvTab base={b} />}</TabsContent>
+          <TabsContent value="Entreprise">{tab === "Entreprise" && <EntrepriseTab base={b} />}</TabsContent>
+          <TabsContent value="CRM">{tab === "CRM" && <CrmTab base={b} />}</TabsContent>
         </div>
       </Tabs>
     </div>

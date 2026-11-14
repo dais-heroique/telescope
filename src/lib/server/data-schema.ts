@@ -1,7 +1,7 @@
 /** Schéma libSQL des données importées. Créé et alimenté par scripts/export/to-libsql.ts. */
 const FEATURE_COLS = `
   nb_batiments integer, emprise_bati real, surface_libre real, annee_construction integer, nb_logements integer, nb_niveaux integer,
-  hauteur_max real, usage_principal text, is_copro integer, copro_numero text, copro_nb_lots integer,
+  hauteur_max real, usage_principal text, adresse text, is_copro integer, copro_numero text, copro_nb_lots integer,
   is_pm integer, pm_count integer, pm_siren text, pm_denomination text, pm_forme text, pm_groupe text,
   nb_ventes integer, last_sale_date text, last_sale_price real, last_sale_prix_m2 real, last_sale_type text, hold_years real,
   nb_dpe integer, dpe_latest text, dpe_latest_date text, dpe_worst text, is_passoire integer, dpe_conso_m2 real,
@@ -13,12 +13,12 @@ export const FEATURE_COLUMNS = FEATURE_COLS.split(",").map((c) => c.trim().split
 export const DATA_TABLES = `
 create table if not exists parcelles (
   idu text primary key, dep text not null, insee text not null, section text, numero text, contenance integer,
-  lon real, lat real, tx integer, ty integer, geom blob not null,${FEATURE_COLS}
+  lon real, lat real, tx integer, ty integer, t16x integer, t16y integer, geom blob not null,${FEATURE_COLS}
 );
 create table if not exists idx_parcelles (z integer not null, tx integer not null, ty integer not null, id text not null, primary key (z, tx, ty, id)) without rowid;
 
 create table if not exists batiments (
-  bg_id text primary key, dep text not null, insee text, geom blob not null, surface_sol real, annee_construction integer, nb_log integer,
+  bg_id text primary key, dep text not null, insee text, t16x integer, t16y integer, geom blob not null, surface_sol real, annee_construction integer, nb_log integer,
   nb_niveau integer, usage_principal text, hauteur_mean real, hauteur_max real, rnic_numero text, rnic_nb_lots integer
 );
 create table if not exists idx_batiments (z integer not null, tx integer not null, ty integer not null, id text not null, primary key (z, tx, ty, id)) without rowid;
@@ -61,8 +61,10 @@ create table if not exists vacance_communes (insee text primary key, annee integ
 
 /** Index secondaires, créés APRÈS le chargement (beaucoup plus rapide). */
 export const DATA_INDEXES = `
-create index if not exists parcelles_dep_score on parcelles (dep, score desc);
-create index if not exists parcelles_tile on parcelles (tx, ty, score);
+create index if not exists parcelles_t16 on parcelles (t16x, t16y);
+create index if not exists parcelles_best on parcelles (dep, score desc) where score >= 40;
+create index if not exists parcelles_pts on parcelles (tx, ty) where score >= 40;
+create index if not exists batiments_t16 on batiments (t16x, t16y);
 create index if not exists parcelles_pm on parcelles (dep) where is_pm = 1;
 create index if not exists parcelles_flags on parcelles (dep) where is_divisible = 1 or is_monopropriete = 1 or is_dent_creuse = 1 or is_passoire = 1;
 create index if not exists parcelles_insee on parcelles (insee);

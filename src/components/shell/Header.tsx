@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { Command, LogOut, Moon, Sun, Users } from "lucide-react";
+import { BarChart3, Command, KanbanSquare, LogOut, Mail, Moon, Sun, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,15 @@ export function Header() {
       <div className="ml-auto flex items-center gap-1">
         <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)} className="hidden gap-1.5 text-muted-foreground sm:inline-flex">
           <Command className="size-3.5" /> K
+        </Button>
+        <Button asChild variant="ghost" size="icon" aria-label="Études de zone">
+          <Link href="/etudes"><BarChart3 /></Link>
+        </Button>
+        <Button asChild variant="ghost" size="icon" aria-label="Courriers">
+          <Link href="/courriers"><Mail /></Link>
+        </Button>
+        <Button asChild variant="ghost" size="icon" aria-label="CRM">
+          <Link href="/crm"><KanbanSquare /></Link>
         </Button>
         <Button asChild variant="ghost" size="icon" aria-label="Équipe">
           <Link href="/equipe"><Users /></Link>

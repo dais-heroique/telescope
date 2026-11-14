@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeGeom, encodeGeom, geomBBox } from "./codec";
-import { indexTiles, latToTileY, lonToTileX, pointTileRange, tileIndexSql } from "./tile-index";
+import { indexTiles, inlineTile, latToTileY, lonToTileX, pointTileRange, tileIndexSql } from "./tile-index";
 
 const poly: GeoJSON.MultiPolygon = {
   type: "MultiPolygon",
@@ -33,17 +33,33 @@ describe("index de tuiles", () => {
     expect(t[0].z).toBeLessThan(16);
     expect(t.length).toBeLessThanOrEqual(36);
   });
-  it("lecture d'une tuile : ancêtre ou descendants, tout parent retrouve l'enfant", () => {
-    // parcelle indexée en z16 → retrouvée depuis la tuile z17 enfant, z16 exacte et la tuile z14 parente
-    const [ref] = indexTiles([6.1294, 45.8992, 6.1295, 45.8993], [16]);
-    const z17x = ref.tx * 2, z17y = ref.ty * 2;
-    expect(tileIndexSql("i", 17, z17x, z17y, [16]).args).toEqual([ref.tx, ref.ty]);
-    expect(tileIndexSql("i", 16, ref.tx, ref.ty, [16]).args).toEqual([ref.tx, ref.ty]);
-    const parent = tileIndexSql("i", 14, ref.tx >> 2, ref.ty >> 2, [16]).args;
-    expect(ref.tx).toBeGreaterThanOrEqual(parent[0]);
-    expect(ref.tx).toBeLessThanOrEqual(parent[1]);
-    expect(ref.ty).toBeGreaterThanOrEqual(parent[2]);
-    expect(ref.ty).toBeLessThanOrEqual(parent[3]);
+  it("lecture d'une tuile : une géométrie mono-tuile est retrouvée depuis tuile exacte, enfant et parent", () => {
+    const bb: [number, number, number, number] = [6.1294, 45.8992, 6.1295, 45.8993];
+    const inl = inlineTile(bb)!;
+    const spec = { table: "p", idCol: "idu", xCol: "tx", yCol: "ty" };
+    // z16 exacte
+    expect(tileIndexSql("i", 16, inl.x, inl.y, [16], spec).args.slice(0, 4)).toEqual([inl.x, inl.x, inl.y, inl.y]);
+    // z17 enfant → même tuile z16
+    expect(tileIndexSql("i", 17, inl.x * 2 + 1, inl.y * 2, [16], spec).args.slice(0, 4)).toEqual([inl.x, inl.x, inl.y, inl.y]);
+    // z14 parent → plage contenant la tuile z16
+    const [x0, x1, y0, y1] = tileIndexSql("i", 14, inl.x >> 2, inl.y >> 2, [16], spec).args;
+    expect(inl.x).toBeGreaterThanOrEqual(x0);
+    expect(inl.x).toBeLessThanOrEqual(x1);
+    expect(inl.y).toBeGreaterThanOrEqual(y0);
+    expect(inl.y).toBeLessThanOrEqual(y1);
+  });
+  it("une géométrie multi-tuiles est retrouvée via son niveau d'index (ancêtre)", () => {
+    const big: [number, number, number, number] = [6.0, 45.8, 6.3, 46.0];
+    const refs = indexTiles(big, [16, 14, 12, 10]);
+    expect(inlineTile(big)).toBeNull();
+    const t = refs[0];
+    // une tuile z16 incluse dans la zone doit retrouver au moins une des tuiles indexées par ancêtre
+    const x16 = (t.tx << (16 - t.z)) + 1, y16 = (t.ty << (16 - t.z)) + 1;
+    const { sql, args } = tileIndexSql("i", 16, x16, y16, [16, 14, 12, 10]);
+    expect(sql).toContain("z = " + t.z);
+    const k = [16, 14, 12, 10].indexOf(t.z);
+    expect(args.slice(k * 4, k * 4 + 2)).toEqual([x16 >> (16 - t.z), x16 >> (16 - t.z)]);
+    expect(args[k * 4]).toBe(t.tx + (x16 >> (16 - t.z)) - t.tx);
   });
   it("plage de points", () => {
     expect(pointTileRange(13, 100, 200, 12)).toEqual({ x0: 50, x1: 50, y0: 100, y1: 100 });

@@ -97,7 +97,10 @@ export async function ingestDvf(dep: string) {
                   when a.no_local and coalesce(a.terrain,0) > 0 then 'Terrain' else 'Autre' end,
              a.pieces,
              case when a.nature = 'Vente' and v.valeur > 0 and a.surf_res > 9 and not a.has_com
-                  then round(v.valeur / a.surf_res, 2) end,
+                  then round(v.valeur / a.surf_res, 2)
+                  -- locaux d'activité seuls (ni maison ni appartement) : prix rapporté à la surface bâtie totale
+                  when a.nature = 'Vente' and v.valeur > 0 and a.has_com and not a.has_app and not a.has_mai and a.surf_tot > 9
+                  then round(v.valeur / a.surf_tot, 2) end,
              a.geom
       from agg a join val v using (id_mutation)
       on conflict (id_mutation) do update set

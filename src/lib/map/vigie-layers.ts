@@ -1,4 +1,4 @@
-import type { ExpressionSpecification, Map as MlMap, VectorTileSource } from "maplibre-gl";
+import type { ExpressionSpecification, GeoJSONSource, Map as MlMap, VectorTileSource } from "maplibre-gl";
 import { ANCIENNETE_BINS, DPE_COLORS, PRIX_BINS } from "@/config/layers";
 import type { DvfColor, Basemap } from "@/lib/store";
 
@@ -49,6 +49,11 @@ export function addVigieLayers(map: MlMap, filters: string) {
   for (const s of SOURCES) {
     map.addSource(`v-${s}`, { type: "vector", tiles: [tileUrl(s, filters)], minzoom: 0, maxzoom: 17, promoteId: s === "parcelles" ? { parcelles: "idu" } : undefined });
   }
+
+  // ── Zone de sélection dessinée + brouillon de dessin ──
+  map.addSource("zone", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addSource("draft", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addSource("sectors", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
   // ── Zonage PLU (sous les parcelles) ──
   map.addLayer({
@@ -116,6 +121,14 @@ export function addVigieLayers(map: MlMap, filters: string) {
         "circle-stroke-color": "#ffffff", "circle-stroke-width": 1, "circle-opacity": 0.9,
       },
     });
+  map.addLayer({ id: "sectors-fill", type: "fill", source: "sectors", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.1 } });
+  map.addLayer({ id: "sectors-line", type: "line", source: "sectors", paint: { "line-color": ["get", "color"], "line-width": 2, "line-dasharray": [4, 2] } });
+  map.addLayer({ id: "sectors-label", type: "symbol", source: "sectors", layout: { "text-field": ["get", "label"], "text-size": 12, "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#0d1626", "text-halo-color": "#fff", "text-halo-width": 1.5 } });
+  map.addLayer({ id: "zone-fill", type: "fill", source: "zone", paint: { "fill-color": "#e8a317", "fill-opacity": 0.12 } });
+  map.addLayer({ id: "zone-line", type: "line", source: "zone", paint: { "line-color": "#e8a317", "line-width": 3, "line-dasharray": [2, 1] } });
+  map.addLayer({ id: "draft-fill", type: "fill", source: "draft", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": "#3a86ff", "fill-opacity": 0.12 } });
+  map.addLayer({ id: "draft-line", type: "line", source: "draft", paint: { "line-color": "#3a86ff", "line-width": 2.5 } });
+  map.addLayer({ id: "draft-pts", type: "circle", source: "draft", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#fff", "circle-stroke-color": "#3a86ff", "circle-stroke-width": 2 } });
   circle("dvf-circles", "dvf", prixColor(), 11, 4);
   circle("permis-circles", "permis", "#06d6a0", 13, 4);
   circle("copros-circles", "copros", "#3a86ff", 12, 5);
@@ -165,4 +178,8 @@ export function syncVigieLayers(map: MlMap, st: MapUiState) {
 
   // Parcelle sélectionnée
   if (map.getLayer("parcelle-selected")) map.setFilter("parcelle-selected", ["==", ["get", "idu"], st.selected?.idu ?? ""]);
+}
+
+export function setGeoJson(map: MlMap, source: "zone" | "draft" | "sectors", fc: GeoJSON.FeatureCollection) {
+  (map.getSource(source) as GeoJSONSource | undefined)?.setData(fc);
 }

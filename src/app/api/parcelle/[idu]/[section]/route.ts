@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getBase } from "@/lib/server/parcelle/base";
 import { getBati } from "@/lib/server/parcelle/bati";
 import { getEnergie } from "@/lib/server/parcelle/energie";
+import { getEntreprise } from "@/lib/server/parcelle/entreprise";
 import { getEnvironnement } from "@/lib/server/parcelle/environnement";
 import { getLoyers } from "@/lib/server/parcelle/loyers";
 import { getProprietaire } from "@/lib/server/parcelle/proprietaire";
@@ -14,12 +15,12 @@ import { getVentes } from "@/lib/server/parcelle/ventes";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const SECTIONS = ["synthese", "bati", "ventes", "energie", "urbanisme", "proprietaire", "risques", "loyers", "environnement"] as const;
+const SECTIONS = ["synthese", "bati", "ventes", "energie", "urbanisme", "proprietaire", "risques", "loyers", "environnement", "entreprise"] as const;
 type Section = (typeof SECTIONS)[number];
 
 const params = z.object({
   radius: z.coerce.number().min(50).max(3000).default(500),
-  type: z.enum(["Maison", "Appartement"]).optional(),
+  type: z.enum(["Maison", "Appartement", "Local industriel. commercial ou assimilé"]).optional(),
   surface: z.coerce.number().min(5).max(5000).optional(),
   bien: z.enum(["appartement", "maison"]).optional(),
   prix: z.coerce.number().min(1).optional(),
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ idu: string
       risques: () => getRisques(base),
       loyers: () => getLoyers(base, { surface: q.data.surface, type: q.data.bien, prix: q.data.prix }),
       environnement: () => getEnvironnement(base, q.data.radius),
+      entreprise: () => getEntreprise(base),
     }[section as Section]();
     return NextResponse.json(data, { headers: { "Cache-Control": "private, max-age=120" } });
   } catch (e) {

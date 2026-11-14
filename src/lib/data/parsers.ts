@@ -100,6 +100,11 @@ export function summarizeMutation(
         : rows.some((r) => toNumber(r.surface_terrain ?? null)) && types.size === 0
           ? "Terrain"
           : "Autre";
-  const ok = valeur !== null && valeur > 0 && surfRes > 9 && !commercial && rows[0]?.nature_mutation === "Vente";
-  return { type_principal, surface_bati_res: surfRes > 0 ? surfRes : null, prix_m2: ok ? Math.round((valeur! / surfRes) * 100) / 100 : null };
+  const vente = valeur !== null && valeur > 0 && rows[0]?.nature_mutation === "Vente";
+  const ok = vente && surfRes > 9 && !commercial;
+  // Locaux d'activité seuls : prix rapporté à la surface bâtie totale
+  const surfTot = rows.reduce((a, r) => a + (toNumber(r.surface_reelle_bati) ?? 0), 0);
+  const okLocal = vente && commercial && !types.has("Appartement") && !types.has("Maison") && surfTot > 9;
+  const prix_m2 = ok ? Math.round((valeur! / surfRes) * 100) / 100 : okLocal ? Math.round((valeur! / surfTot) * 100) / 100 : null;
+  return { type_principal, surface_bati_res: surfRes > 0 ? surfRes : null, prix_m2 };
 }

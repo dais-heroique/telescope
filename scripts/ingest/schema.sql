@@ -232,6 +232,7 @@ create table public.parcel_features (
   nb_niveaux       integer,
   hauteur_max      numeric,
   usage_principal  text,
+  adresse          text,
   -- copropriété / propriété
   is_copro         boolean not null default false,
   copro_numero     text,
@@ -278,3 +279,13 @@ create index parcel_features_pm_idx on public.parcel_features (dep) where is_pm;
 create index parcel_features_flags_idx on public.parcel_features (dep) where is_divisible or is_monopropriete or is_dent_creuse or is_passoire;
 create index parcel_features_sale_idx on public.parcel_features (dep, last_sale_date);
 
+
+-- ───────────── Statistiques communales (contexte du score) ─────────────
+create table if not exists public.commune_stats (
+  insee           text primary key,
+  dep             text not null,
+  cycle_years     numeric,     -- médiane des intervalles entre deux ventes d'une même parcelle
+  turnover_pct    numeric,     -- % de parcelles bâties vendues sur 12 mois
+  prix_m2_median  numeric,     -- médiane €/m² logements, 24 derniers mois
+  vacance_pct     numeric
+);

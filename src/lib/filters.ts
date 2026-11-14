@@ -10,11 +10,16 @@ const range = z.tuple([z.number().nullable(), z.number().nullable()]);
 
 export const DPE_LABELS = ["A", "B", "C", "D", "E", "F", "G"] as const;
 export const PLU_TYPES = ["U", "AU", "A", "N"] as const;
-export const USAGES = ["Résidentiel individuel", "Résidentiel collectif", "Tertiaire", "Industriel", "Agricole", "Annexe", "Autre"] as const;
+export const USAGES = ["Résidentiel individuel", "Résidentiel collectif", "Tertiaire", "Secondaire", "Primaire", "Dépendance"] as const;
+/** Libellés lisibles des usages BDNB (Secondaire = industrie/entrepôt, Primaire = agricole). */
+export const USAGE_LABELS: Record<string, string> = { Secondaire: "Industrie / entrepôt", Primaire: "Agricole", Tertiaire: "Bureaux / commerces" };
 export const FLAGS = ["passoire", "divisible", "monopropriete", "dent_creuse"] as const;
 
 /** Classe de zone PLU (U, AU, A, N) déduite de `typezone` (U, AUc, AUs, A, Ah, N, Nh…). */
 export const PLU_CLASS_SQL = `(case when f.plu_type like 'AU%' then 'AU' when f.plu_type like 'A%' then 'A' when f.plu_type like 'N%' then 'N' when f.plu_type like 'U%' then 'U' end)`;
+
+/** Société privée (SCI, SAS, SARL, SA…) : exclut associations, GFA, syndicats, collectivités. */
+export const SOCIETE_SQL = `(f.is_pm = 1 and f.pm_groupe = 'personnes morales non remarquables' and (f.pm_forme like 'Soci%' or f.pm_forme like 'SAS%' or f.pm_forme like 'SA %' or f.pm_forme like 'SARL%' or f.pm_forme like 'EURL%' or f.pm_forme like 'Autre soci%'))`;
 
 export const filtersSchema = z
   .object({
@@ -91,7 +96,7 @@ export function buildWhere(filters: Filters): SqlWhere {
   between("f.nb_logements", filters.logements);
   if (filters.pm === "oui") add("f.is_pm = 1");
   if (filters.pm === "non") add("f.is_pm = 0");
-  if (filters.pm === "societes") add("f.is_pm = 1 and f.pm_groupe = 'personnes morales non remarquables'");
+  if (filters.pm === "societes") add(SOCIETE_SQL);
   if (filters.pmNom) add("f.pm_denomination like ? escape '\\'", likeEsc(filters.pmNom));
   if (filters.pmForme) add("f.pm_forme like ? escape '\\'", likeEsc(filters.pmForme));
   if (filters.copro === "oui") add("f.is_copro = 1");

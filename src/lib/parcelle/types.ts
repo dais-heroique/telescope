@@ -131,3 +131,19 @@ export interface Synthese {
   score: { value: number; factors: { label: string; points: number; detail?: string }[] } | null;
   flags: { key: string; label: string }[];
 }
+
+export interface Occupant {
+  siren: string;
+  siret: string;
+  name: string;
+  adresse: string | null;
+  naf: string | null;
+  effectif: string | null;
+  since: string | null;
+  isSiege: boolean;
+}
+export interface BusinessReport {
+  occupants: Occupant[];
+  dpeTertiaire: { numero: string; date: string | null; etiquette: string; secteur: string | null; surface: number | null; adresse: string | null }[];
+  radius: number;
+}

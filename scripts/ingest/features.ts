@@ -1,3 +1,4 @@
+import { DETECTION } from "../../config/scoring";
 import { db, trackRun } from "./lib/db";
 
 /**
@@ -96,9 +97,20 @@ export async function buildFeatures(dep: string) {
       group by 1, 2`);
     await q(`create index on t_permis_cells (cx, cy)`);
 
+    // ── Adresse : dernier DPE géocodé (BAN complète) sinon dernière vente DVF ──
+    await q(`drop table if exists t_addr`);
+    await q(`create temp table t_addr as
+      select distinct on (idu) idu, adr from (
+        select idu, adresse as adr, date_dpe as d, 1 as pr from dpe where dep = $1 and idu is not null and adresse is not null
+        union all
+        select mp.idu, m.adresse, m.date_mutation, 2 from dvf_mutation_parcelles mp join dvf_mutations m using (id_mutation)
+        where mp.dep = $1 and m.adresse is not null
+      ) x order by idu, pr, d desc nulls last`);
+    await q(`create index on t_addr (idu)`);
+
     // ── Upsert des features ──
     await q(`insert into parcel_features (
-        idu, dep, insee, contenance, nb_batiments, emprise_bati, surface_libre, annee_construction, nb_logements, nb_niveaux, hauteur_max, usage_principal,
+        idu, dep, insee, contenance, nb_batiments, emprise_bati, surface_libre, annee_construction, nb_logements, nb_niveaux, hauteur_max, usage_principal, adresse,
         is_copro, copro_numero, copro_nb_lots, is_pm, pm_count, pm_siren, pm_denomination, pm_forme, pm_groupe,
         nb_ventes, last_sale_date, last_sale_price, last_sale_prix_m2, last_sale_type, hold_years,
         nb_dpe, dpe_latest, dpe_latest_date, dpe_worst, is_passoire, dpe_conso_m2,
@@ -106,7 +118,7 @@ export async function buildFeatures(dep: string) {
       select p.idu, p.dep, p.insee, p.contenance,
         coalesce(b.nb, 0), round(b.emprise::numeric, 1),
         case when p.contenance is not null then greatest(p.contenance - coalesce(b.emprise, 0), 0) end,
-        b.annee, b.nb_log, b.niveaux, b.hauteur, b.usage,
+        b.annee, b.nb_log, b.niveaux, b.hauteur, b.usage, ad.adr,
         (c.idu is not null or coalesce(b.copro, false)), coalesce(c.numero, b.copro_numero), coalesce(c.nb_lots, b.copro_lots),
         (m.idu is not null), coalesce(m.n, 0), m.siren, m.denomination, m.forme, m.groupe,
         coalesce(s.n, 0), s.d, s.price, s.prix_m2, s.type_principal,
@@ -125,11 +137,12 @@ export async function buildFeatures(dep: string) {
       left join t_dpe d on d.idu = p.idu
       left join t_plu z on z.idu = p.idu
       left join t_permis pm on pm.idu = p.idu
+      left join t_addr ad on ad.idu = p.idu
       where p.dep = $1
       on conflict (idu) do update set
         insee = excluded.insee, contenance = excluded.contenance, nb_batiments = excluded.nb_batiments, emprise_bati = excluded.emprise_bati,
         surface_libre = excluded.surface_libre, annee_construction = excluded.annee_construction, nb_logements = excluded.nb_logements,
-        nb_niveaux = excluded.nb_niveaux, hauteur_max = excluded.hauteur_max, usage_principal = excluded.usage_principal,
+        nb_niveaux = excluded.nb_niveaux, hauteur_max = excluded.hauteur_max, usage_principal = excluded.usage_principal, adresse = excluded.adresse,
         is_copro = excluded.is_copro, copro_numero = excluded.copro_numero, copro_nb_lots = excluded.copro_nb_lots,
         is_pm = excluded.is_pm, pm_count = excluded.pm_count, pm_siren = excluded.pm_siren, pm_denomination = excluded.pm_denomination,
         pm_forme = excluded.pm_forme, pm_groupe = excluded.pm_groupe, nb_ventes = excluded.nb_ventes, last_sale_date = excluded.last_sale_date,
@@ -138,8 +151,64 @@ export async function buildFeatures(dep: string) {
         dpe_worst = excluded.dpe_worst, is_passoire = excluded.is_passoire, dpe_conso_m2 = excluded.dpe_conso_m2, plu_type = excluded.plu_type,
         plu_libelle = excluded.plu_libelle, nb_permis_5y = excluded.nb_permis_5y, last_permis_date = excluded.last_permis_date,
         nb_permis_proches = excluded.nb_permis_proches, computed_at = now()`);
+
+    await detections(q, dep);
+    await communeStats(q, dep);
     await sql`analyze parcel_features`;
     const [{ n }] = await sql<{ n: string }[]>`select count(*) n from parcel_features where dep = ${dep}`;
     return { rows: Number(n) };
   });
+}
+
+/** Détections « marchands de biens » (seuils : config/scoring.ts → DETECTION). */
+async function detections(q: (text: string) => Promise<unknown>, dep: string) {
+  const D = DETECTION;
+  const publicOwner = `(f.pm_groupe is not null and f.pm_groupe <> 'personnes morales non remarquables')`;
+  // Monopropriété : immeuble collectif (≥ 2 logements, BDNB) sans immatriculation RNIC, hors propriétaire public/HLM
+  await q(`update parcel_features f set is_monopropriete = coalesce(
+      f.usage_principal = 'Résidentiel collectif' and coalesce(f.nb_logements, 0) >= ${D.monopropriete.minLogements} and not f.is_copro and not ${publicOwner}, false)
+    where f.dep = $1`);
+  // Bien divisible : grande parcelle bâtie en zone U/AU avec surface libre importante, ou grosse maison peu divisée
+  await q(`update parcel_features f set is_divisible = coalesce(
+      f.plu_type is not null and (f.plu_type like 'U%' or f.plu_type like 'AU%') and not ${publicOwner} and not f.is_copro and (
+        (f.nb_batiments > 0 and coalesce(f.contenance, 0) >= ${D.divisible.minContenance} and coalesce(f.surface_libre, 0) >= ${D.divisible.minSurfaceLibre}
+          and coalesce(f.emprise_bati, 0) >= ${D.divisible.minEmprise} and coalesce(f.nb_logements, 0) <= 2)
+        or (f.usage_principal = 'Résidentiel individuel' and coalesce(f.emprise_bati, 0) * greatest(coalesce(f.nb_niveaux, 1), 1) >= ${D.divisible.bigHouseEmpriseNiveaux}
+          and coalesce(f.nb_logements, 0) <= 2)), false)
+    where f.dep = $1`);
+  // Dent creuse : parcelle non bâtie en zone U/AU, entourée majoritairement de parcelles bâties
+  await q(`update parcel_features f set is_dent_creuse = false where f.dep = $1`);
+  await q(`update parcel_features f set is_dent_creuse = true
+    from parcelles p
+    where p.idu = f.idu and f.dep = $1 and f.nb_batiments = 0 and (f.plu_type like 'U%' or f.plu_type like 'AU%')
+      and f.contenance between ${D.dentCreuse.minContenance} and ${D.dentCreuse.maxContenance}
+      and (f.pm_groupe is null or f.pm_groupe = 'personnes morales non remarquables')
+      and (select count(*) filter (where nf.nb_batiments > 0)::float / nullif(count(*), 0)
+           from parcelles np join parcel_features nf on nf.idu = np.idu
+           where np.idu <> p.idu and np.dep = $1 and st_dwithin(np.geom_3857, p.geom_3857, ${Math.round(D.dentCreuse.neighbourRadiusM / Math.cos((46 * Math.PI) / 180))})) >= ${D.dentCreuse.minBuiltNeighbours}`);
+}
+
+/** Contexte communal pour le score : cycle de revente, rotation, prix médian, vacance. */
+async function communeStats(q: (text: string) => Promise<unknown>, dep: string) {
+  await q(`delete from commune_stats where dep = $1`);
+  await q(`
+    with sales as (
+      select mp.idu, m.date_mutation, m.insee from dvf_mutation_parcelles mp join dvf_mutations m using (id_mutation)
+      where mp.dep = $1 and m.nature = 'Vente' and m.valeur_fonciere > 0 and m.type_principal in ('Maison', 'Appartement')
+    ), gaps as (
+      select insee, (date_mutation - lag(date_mutation) over (partition by idu order by date_mutation)) / 365.25 as y from sales
+    ), cyc as (
+      select insee, percentile_cont(0.5) within group (order by y) as cycle, count(*) as n from gaps where y is not null and y > 0.25 group by insee
+    ), dep_cycle as (
+      select percentile_cont(0.5) within group (order by y) as c from gaps where y is not null and y > 0.25
+    ), turn as (
+      select f.insee, 100.0 * count(*) filter (where f.last_sale_date >= current_date - interval '12 months') / nullif(count(*) filter (where f.nb_batiments > 0), 0) as t
+      from parcel_features f where f.dep = $1 group by f.insee
+    ), px as (
+      select insee, percentile_cont(0.5) within group (order by prix_m2) as p from dvf_mutations
+      where dep = $1 and prix_m2 is not null and type_principal in ('Maison', 'Appartement') and date_mutation >= current_date - interval '24 months' group by insee
+    )
+    insert into commune_stats (insee, dep, cycle_years, turnover_pct, prix_m2_median, vacance_pct)
+    select t.insee, $1, case when c.n >= 30 then c.cycle else (select c from dep_cycle) end, t.t, px.p, v.taux_vacance
+    from turn t left join cyc c using (insee) left join px using (insee) left join vacance_communes v on v.insee = t.insee`);
 }

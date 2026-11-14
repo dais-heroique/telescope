@@ -25,7 +25,7 @@ const point = (lon: number, lat: number, properties: Props) => feat({ type: "Poi
 async function layerFeatures(layer: TileLayer, z: number, x: number, y: number, filters: Filters): Promise<GeoJSON.Feature[]> {
   switch (layer) {
     case "parcelles": {
-      const idx = tileIndexSql("idx_parcelles", z, x, y, [...LEVELS.parcelles]);
+      const idx = tileIndexSql("idx_parcelles", z, x, y, [...LEVELS.parcelles], { table: "parcelles", idCol: "idu", xCol: "t16x", yCol: "t16y" });
       const w = buildWhere(filters);
       const rows = await query<Props & { geom: Blob }>(
         `select f.idu, f.contenance as c, f.dpe_latest as dpe, f.score as s, f.last_sale_prix_m2 as pm2, f.hold_years as h, f.plu_type as plu,
@@ -37,7 +37,7 @@ async function layerFeatures(layer: TileLayer, z: number, x: number, y: number, 
       return rows.map(({ geom, ...p }) => feat(decodeGeom(geom), p));
     }
     case "bati": {
-      const idx = tileIndexSql("idx_batiments", z, x, y, [...LEVELS.batiments]);
+      const idx = tileIndexSql("idx_batiments", z, x, y, [...LEVELS.batiments], { table: "batiments", idCol: "bg_id", xCol: "t16x", yCol: "t16y" });
       const rows = await query<Props & { geom: Blob }>(
         `select b.bg_id as id, b.annee_construction as an, b.nb_log as nl, b.hauteur_max as h, b.usage_principal as u, b.surface_sol as s,
                 (b.rnic_numero is not null) as cp, b.geom from batiments b where b.bg_id in (${idx.sql})`,
@@ -81,7 +81,7 @@ async function layerFeatures(layer: TileLayer, z: number, x: number, y: number, 
       const r = pointTileRange(z, x, y, POINT_LEVEL);
       const w = buildWhere(filters);
       const rows = await query<{ s: number; lon: number; lat: number }>(
-        `select f.score as s, f.lon, f.lat from parcelles f where f.tx between ? and ? and f.ty between ? and ? and f.score >= ${z >= 11 ? 40 : 70}${w.text} limit 20000`,
+        `select f.score as s, f.lon, f.lat from parcelles f where f.tx between ? and ? and f.ty between ? and ? and f.score >= 40 and f.score >= ${z >= 11 ? 50 : 70}${w.text} limit 20000`,
         [r.x0, r.x1, r.y0, r.y1, ...w.params],
       );
       return rows.map(({ lon, lat, s }) => point(lon, lat, { s }));

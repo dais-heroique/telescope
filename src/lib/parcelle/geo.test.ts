@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aerialBBox, aerialUrl, bboxOf, haversine, pointInGeometry, projectRings } from "./geo";
+import { circlePolygon, aerialBBox, aerialUrl, bboxOf, haversine, pointInGeometry, projectRings } from "./geo";
 
 const square: GeoJSON.Polygon = { type: "Polygon", coordinates: [[[6.0, 45.0], [6.001, 45.0], [6.001, 45.001], [6.0, 45.001], [6.0, 45.0]]] };
 
@@ -31,5 +31,13 @@ describe("géo", () => {
   it("point dans polygone", () => {
     expect(pointInGeometry([6.0005, 45.0005], square)).toBe(true);
     expect(pointInGeometry([6.01, 45.0], square)).toBe(false);
+  });
+  it("cercle : fermé et de rayon correct", () => {
+    const c = circlePolygon([6.1, 45.9], 500);
+    const ring = c.coordinates[0];
+    expect(ring[0]).toEqual(ring[ring.length - 1]);
+    expect(haversine([6.1, 45.9], ring[10] as [number, number])).toBeGreaterThan(495);
+    expect(haversine([6.1, 45.9], ring[10] as [number, number])).toBeLessThan(505);
+    expect(pointInGeometry([6.1, 45.9], c)).toBe(true);
   });
 });
