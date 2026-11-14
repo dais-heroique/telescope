@@ -112,6 +112,7 @@ export default function MapView() {
       }
       if (s.finishNonce !== prev.finishNonce && s.drawMode === "polygon") finishPolygon();
       if (s.sectors !== prev.sectors && readyRef.current) pushSectors(s.sectors);
+      if (s.leftOpen !== prev.leftOpen) setTimeout(() => map.resize(), 50);
       if (s.zone !== prev.zone && readyRef.current) {
         setGeoJson(map, "zone", { type: "FeatureCollection", features: s.zone ? [{ type: "Feature", properties: {}, geometry: s.zone }] : [] });
         if (s.zone && !prev.zone) {

@@ -43,3 +43,6 @@ export const DETECTION = {
   divisible: { minContenance: 1000, minSurfaceLibre: 650, minEmprise: 40, bigHouseEmpriseNiveaux: 260 },
   dentCreuse: { minContenance: 150, maxContenance: 3000, neighbourRadiusM: 15, minBuiltNeighbours: 0.6 },
 } as const;
+
+/** Hypothèses INDICATIVES du module Promoteurs (le règlement de PLU n'est pas exploité automatiquement). */
+export const PROMOTEUR = { emprise: 0.35, niveaux: 3, rendementSurfacePlancher: 0.85, minParcelles: 2 } as const;

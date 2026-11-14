@@ -41,11 +41,12 @@ function useSectorsSync() {
 export function MapWorkspace() {
   useDeepLink();
   useSectorsSync();
+  const leftOpen = useUi((s) => s.leftOpen);
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       <Header />
       <div className="flex min-h-0 flex-1">
-        <LeftPanel />
+        {leftOpen && <LeftPanel />}
         <main className="relative min-w-0 flex-1">
           <MapView />
           <DrawToolbar />

@@ -41,6 +41,7 @@ interface UiState {
   sort: SortKey;
   leftTab: LeftTab;
   finishNonce: number;
+  leftOpen: boolean;
   sectors: { id: string; name: string; polygon: GeoJSON.Polygon; color: string; assignedTo: string | null }[];
   basemap: Basemap;
   layers: Record<string, boolean>;
@@ -57,6 +58,7 @@ interface UiState {
   setSort: (s: SortKey) => void;
   setLeftTab: (t: LeftTab) => void;
   finishDraw: () => void;
+  toggleLeft: () => void;
   setSectors: (s: UiState["sectors"]) => void;
   setBasemap: (b: Basemap) => void;
   toggleLayer: (id: string) => void;
@@ -78,6 +80,7 @@ export const useUi = create<UiState>((set) => ({
   sort: "score",
   leftTab: "calques",
   finishNonce: 0,
+  leftOpen: true,
   sectors: [],
   basemap: "plan",
   layers: layersFor("habitation"),
@@ -95,6 +98,7 @@ export const useUi = create<UiState>((set) => ({
   setLeftTab: (leftTab) => set({ leftTab }),
   finishDraw: () => set((s) => ({ finishNonce: s.finishNonce + 1 })),
   setSectors: (sectors) => set({ sectors }),
+  toggleLeft: () => set((s) => ({ leftOpen: !s.leftOpen })),
   setBasemap: (basemap) => set({ basemap }),
   toggleLayer: (id) =>
     set((s) => {

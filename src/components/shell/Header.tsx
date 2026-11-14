@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { BarChart3, Command, KanbanSquare, LogOut, Mail, Moon, Sun, Users } from "lucide-react";
+import { BarChart3, Command, PanelLeft, KanbanSquare, LogOut, Mail, Moon, Sun, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { useUi } from "@/lib/store";
 
 export function Header() {
   const { resolvedTheme, setTheme } = useTheme();
-  const { module, setModule, setPaletteOpen } = useUi();
+  const { module, setModule, setPaletteOpen, toggleLeft } = useUi();
   const router = useRouter();
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -19,7 +19,10 @@ export function Header() {
   }
   return (
     <header className="z-30 flex h-12 shrink-0 items-center gap-3 border-b bg-card px-3">
-      <Link href="/" aria-label="Accueil VIGIE">
+      <Button variant="ghost" size="icon" aria-label="Afficher/masquer le panneau" title="Afficher/masquer le panneau" onClick={toggleLeft}>
+        <PanelLeft />
+      </Button>
+      <Link href="/carte" aria-label="Carte VIGIE">
         <Logo />
       </Link>
       <nav className="ml-2 flex items-center gap-1 overflow-x-auto" aria-label="Modules métiers">
@@ -41,16 +44,16 @@ export function Header() {
         <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)} className="hidden gap-1.5 text-muted-foreground sm:inline-flex">
           <Command className="size-3.5" /> K
         </Button>
-        <Button asChild variant="ghost" size="icon" aria-label="Études de zone">
+        <Button asChild variant="ghost" size="icon" aria-label="Études de zone" title="Études de zone">
           <Link href="/etudes"><BarChart3 /></Link>
         </Button>
-        <Button asChild variant="ghost" size="icon" aria-label="Courriers">
+        <Button asChild variant="ghost" size="icon" aria-label="Courriers" title="Courriers">
           <Link href="/courriers"><Mail /></Link>
         </Button>
-        <Button asChild variant="ghost" size="icon" aria-label="CRM">
+        <Button asChild variant="ghost" size="icon" aria-label="CRM" title="CRM">
           <Link href="/crm"><KanbanSquare /></Link>
         </Button>
-        <Button asChild variant="ghost" size="icon" aria-label="Équipe">
+        <Button asChild variant="ghost" size="icon" aria-label="Équipe" title="Équipe">
           <Link href="/equipe"><Users /></Link>
         </Button>
         <Button variant="ghost" size="icon" aria-label="Se déconnecter" onClick={logout}>

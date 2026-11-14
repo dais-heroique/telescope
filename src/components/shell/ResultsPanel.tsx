@@ -3,9 +3,11 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Download, Loader2, Mail } from "lucide-react";
+import Link from "next/link";
+import { BarChart3, Download, Loader2, Mail, Merge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DpeChip } from "@/components/parcelle/ParcelDetail";
+import { ClustersDialog } from "@/components/promoteurs/ClustersDialog";
 import { MailDialog } from "@/components/courriers/MailDialog";
 import { crm, useCrmMutation } from "@/components/crm/hooks";
 import { EXPORT_COLUMNS } from "@/lib/export-columns";
@@ -70,7 +72,8 @@ function ExportDialog({ body, onClose }: { body: Record<string, unknown>; onClos
 
 export function ResultsPanel() {
   const { body, zone } = useSearchScope();
-  const { sort, setSort, select, fly } = useUi();
+  const { sort, setSort, select, fly, module } = useUi();
+  const [clusters, setClusters] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [mailing, setMailing] = useState(false);
   const saveSector = useCrmMutation((b: Record<string, unknown>) => crm.addSector(b));
@@ -101,6 +104,12 @@ export function ResultsPanel() {
           <Button size="sm" variant="outline" onClick={() => setExporting(true)} disabled={!q.data?.total}><Download /> Exporter</Button>
         </div>
       </div>
+      {module === "promoteurs" && (
+        <Button size="sm" variant="outline" onClick={() => setClusters(true)} disabled={!q.data?.total}><Merge /> Parcelles contiguës</Button>
+      )}
+      {zone && (
+        <Button asChild size="sm" variant="ghost"><Link href="/etudes"><BarChart3 /> Étude de cette zone</Link></Button>
+      )}
       {zone && (
         <Button size="sm" variant="ghost" onClick={() => { const name = prompt("Nom du secteur de prospection ?"); if (name?.trim()) saveSector.mutate({ name: name.trim(), polygon: zone }); }}>Enregistrer cette zone comme secteur</Button>
       )}
@@ -141,6 +150,7 @@ export function ResultsPanel() {
           })}
         </div>
       </div>
+      {clusters && body && <ClustersDialog body={body} onClose={() => setClusters(false)} />}
       {mailing && body && <MailDialog scope={{ search: body }} onClose={() => setMailing(false)} />}
       {exporting && body && <ExportDialog body={body} onClose={() => setExporting(false)} />}
     </div>
