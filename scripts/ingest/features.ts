@@ -152,8 +152,8 @@ export async function buildFeatures(dep: string) {
         plu_libelle = excluded.plu_libelle, nb_permis_5y = excluded.nb_permis_5y, last_permis_date = excluded.last_permis_date,
         nb_permis_proches = excluded.nb_permis_proches, computed_at = now()`);
 
-    await detections(q, dep);
-    await communeStats(q, dep);
+    await detections(q);
+    await communeStats(q);
     await sql`analyze parcel_features`;
     const [{ n }] = await sql<{ n: string }[]>`select count(*) n from parcel_features where dep = ${dep}`;
     return { rows: Number(n) };
@@ -161,7 +161,7 @@ export async function buildFeatures(dep: string) {
 }
 
 /** Détections « marchands de biens » (seuils : config/scoring.ts → DETECTION). */
-async function detections(q: (text: string) => Promise<unknown>, dep: string) {
+async function detections(q: (text: string) => Promise<unknown>) {
   const D = DETECTION;
   const publicOwner = `(f.pm_groupe is not null and f.pm_groupe <> 'personnes morales non remarquables')`;
   // Monopropriété : immeuble collectif (≥ 2 logements, BDNB) sans immatriculation RNIC, hors propriétaire public/HLM
@@ -189,7 +189,7 @@ async function detections(q: (text: string) => Promise<unknown>, dep: string) {
 }
 
 /** Contexte communal pour le score : cycle de revente, rotation, prix médian, vacance. */
-async function communeStats(q: (text: string) => Promise<unknown>, dep: string) {
+async function communeStats(q: (text: string) => Promise<unknown>) {
   await q(`delete from commune_stats where dep = $1`);
   await q(`
     with sales as (
