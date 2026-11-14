@@ -49,7 +49,8 @@ jobs:
         id: dep
         run: |
           DEP="${{ inputs.dep }}"
-          if [ -z "$DEP" ]; then DEP="$(tr -d '[:space:]' < .github/load-trigger.txt)"; fi
+          if [ -z "$DEP" ]; then DEP="$(head -n1 .github/load-trigger.txt | tr -d '[:space:]')"; fi
+          case "$DEP" in [0-9][0-9]|2A|2B|97[0-9]) ;; *) echo "département invalide : $DEP"; exit 1;; esac
           echo "dep=$DEP" >> "$GITHUB_OUTPUT"
       - name: Ingestion du département
         run: npx tsx scripts/ingest/all.ts --dep="${{ steps.dep.outputs.dep }}"
