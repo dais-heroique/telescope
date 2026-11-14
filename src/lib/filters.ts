@@ -55,53 +55,50 @@ export function encodeFilters(f: Filters): string {
 }
 
 export interface SqlWhere {
-  /** Fragment SQL (commence par « and … » ou vide), alias de table `f` = parcel_features. */
+  /** Fragment SQL (« and (…) and (…) » ou vide), alias de table `f` = parcelles. Paramètres positionnels `?`. */
   text: string;
-  params: (string | number | string[])[];
+  params: (string | number)[];
 }
 
-/**
- * Convertit les filtres en conditions SQL paramétrées.
- * `startAt` = index du premier paramètre `$n` disponible.
- */
-export function buildWhere(filters: Filters, startAt: number): SqlWhere {
+/** Convertit les filtres en conditions SQL (SQLite) paramétrées par `?`. Aucune valeur utilisateur n'est interpolée. */
+export function buildWhere(filters: Filters): SqlWhere {
   const parts: string[] = [];
   const params: SqlWhere["params"] = [];
-  const p = (v: string | number | string[], cast: string) => {
-    params.push(v);
-    return `$${startAt + params.length - 1}::${cast}`;
+  const add = (cond: string, ...vals: (string | number)[]) => {
+    parts.push(cond);
+    params.push(...vals);
   };
-  const between = (col: string, r: [number | null, number | null] | undefined, cast = "numeric") => {
+  const between = (col: string, r: [number | null, number | null] | undefined) => {
     if (!r) return;
-    if (r[0] !== null) parts.push(`${col} >= ${p(r[0], cast)}`);
-    if (r[1] !== null) parts.push(`${col} <= ${p(r[1], cast)}`);
+    if (r[0] !== null) add(`${col} >= ?`, r[0]);
+    if (r[1] !== null) add(`${col} <= ?`, r[1]);
   };
+  const inList = (col: string, vals: string[]) => add(`${col} in (${vals.map(() => "?").join(",")})`, ...vals);
+  const likeEsc = (v: string) => `%${v.replace(/[%_\\]/g, "\\$&")}%`;
 
-  if (filters.usages?.length) parts.push(`f.usage_principal = any(${p(filters.usages, "text[]")})`);
+  if (filters.usages?.length) inList("f.usage_principal", filters.usages);
   between("f.contenance", filters.surfParcelle);
   between("f.emprise_bati", filters.emprise);
   between("f.surface_libre", filters.surfLibre);
   between("f.last_sale_price", filters.prix);
   between("f.last_sale_prix_m2", filters.prixM2);
-  if (filters.venduApres) parts.push(`f.last_sale_date >= ${p(filters.venduApres, "date")}`);
-  if (filters.venduAvant) parts.push(`f.last_sale_date <= ${p(filters.venduAvant, "date")}`);
+  if (filters.venduApres) add("f.last_sale_date >= ?", filters.venduApres);
+  if (filters.venduAvant) add("f.last_sale_date <= ?", filters.venduAvant);
   between("f.hold_years", filters.detention);
-  if (filters.dpe?.length) parts.push(`f.dpe_latest = any(${p(filters.dpe, "char(1)[]")})`);
-  if (filters.plu?.length) parts.push(`${PLU_CLASS_SQL} = any(${p(filters.plu, "text[]")})`);
-  between("f.annee_construction", filters.annee, "int");
-  between("f.nb_logements", filters.logements, "int");
-  if (filters.pm === "oui") parts.push("f.is_pm");
-  if (filters.pm === "non") parts.push("not f.is_pm");
-  if (filters.pm === "societes") parts.push("f.is_pm and f.pm_groupe = 'personnes morales non remarquables'");
-  if (filters.pmNom) parts.push(`f.pm_denomination ilike ${p(`%${filters.pmNom.replace(/[%_\\]/g, "\\$&")}%`, "text")}`);
-  if (filters.pmForme) parts.push(`f.pm_forme ilike ${p(`%${filters.pmForme.replace(/[%_\\]/g, "\\$&")}%`, "text")}`);
-  if (filters.copro === "oui") parts.push("f.is_copro");
-  if (filters.copro === "non") parts.push("not f.is_copro");
-  if (filters.scoreMin !== undefined) parts.push(`f.score >= ${p(filters.scoreMin, "int")}`);
+  if (filters.dpe?.length) inList("f.dpe_latest", filters.dpe);
+  if (filters.plu?.length) inList(PLU_CLASS_SQL, filters.plu);
+  between("f.annee_construction", filters.annee);
+  between("f.nb_logements", filters.logements);
+  if (filters.pm === "oui") add("f.is_pm = 1");
+  if (filters.pm === "non") add("f.is_pm = 0");
+  if (filters.pm === "societes") add("f.is_pm = 1 and f.pm_groupe = 'personnes morales non remarquables'");
+  if (filters.pmNom) add("f.pm_denomination like ? escape '\\'", likeEsc(filters.pmNom));
+  if (filters.pmForme) add("f.pm_forme like ? escape '\\'", likeEsc(filters.pmForme));
+  if (filters.copro === "oui") add("f.is_copro = 1");
+  if (filters.copro === "non") add("f.is_copro = 0");
+  if (filters.scoreMin !== undefined) add("f.score >= ?", filters.scoreMin);
   for (const flag of filters.flags ?? []) {
-    parts.push(
-      { passoire: "f.is_passoire", divisible: "f.is_divisible", monopropriete: "f.is_monopropriete", dent_creuse: "f.is_dent_creuse" }[flag],
-    );
+    add({ passoire: "f.is_passoire = 1", divisible: "f.is_divisible = 1", monopropriete: "f.is_monopropriete = 1", dent_creuse: "f.is_dent_creuse = 1" }[flag]);
   }
-  return { text: parts.length ? parts.map((x) => ` and (${x})`).join("") : "", params };
+  return { text: parts.map((x) => ` and (${x})`).join(""), params };
 }

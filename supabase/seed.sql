@@ -1,1 +1,0 @@
--- Données de démonstration éventuelles (vide par défaut).

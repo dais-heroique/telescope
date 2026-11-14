@@ -5,26 +5,16 @@ import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { hasSupabase } from "@/lib/env";
-import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [error, setError] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setState("sending");
-    const next = new URLSearchParams(window.location.search).get("next") ?? "/carte";
-    const { error } = await createClient().auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
-    });
-    if (error) {
-      setError(error.message);
-      setState("error");
-    } else setState("sent");
+    const r = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    setState(r.ok ? "sent" : "error");
   }
 
   return (
@@ -32,18 +22,18 @@ export default function LoginPage() {
       <div className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm">
         <Logo className="mb-6" />
         <h1 className="mb-1 text-xl font-semibold">Connexion</h1>
-        {!hasSupabase ? (
-          <p className="text-sm text-muted-foreground">Supabase n&apos;est pas configuré : l&apos;application tourne en mode démo, sans connexion requise.</p>
-        ) : state === "sent" ? (
-          <p className="text-sm">Un lien de connexion vient d&apos;être envoyé à <strong>{email}</strong>.</p>
+        {state === "sent" ? (
+          <p className="text-sm">
+            Si l&apos;adresse <strong>{email}</strong> est autorisée, un lien de connexion vient d&apos;être envoyé. Pas d&apos;email ? Demandez un lien à l&apos;administrateur.
+          </p>
         ) : (
           <form onSubmit={submit} className="space-y-3">
-            <p className="text-sm text-muted-foreground">Recevez un lien magique par email.</p>
+            <p className="text-sm text-muted-foreground">Accès sur invitation. Recevez un lien magique par email.</p>
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email professionnel</Label>
-              <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vous@agence.fr" />
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vous@exemple.fr" />
             </div>
-            {state === "error" && <p className="text-sm text-destructive">{error}</p>}
+            {state === "error" && <p className="text-sm text-destructive">Une erreur est survenue, réessayez.</p>}
             <Button type="submit" className="w-full" disabled={state === "sending"}>
               {state === "sending" ? "Envoi…" : "Recevoir le lien"}
             </Button>

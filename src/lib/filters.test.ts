@@ -15,25 +15,30 @@ describe("filtres", () => {
   });
 
   it("produit du SQL paramétré sans interpoler les valeurs", () => {
-    const w = buildWhere({ surfParcelle: [500, null], dpe: ["F"], pmNom: "x'; drop table parcelles;--" }, 5);
-    expect(w.text).toContain("$5::numeric");
-    expect(w.text).toContain("$6::char(1)[]");
+    const w = buildWhere({ surfParcelle: [500, null], dpe: ["F"], pmNom: "x'; drop table parcelles;--" });
+    expect(w.text).toContain("f.contenance >= ?");
+    expect(w.text).toContain("f.dpe_latest in (?)");
     expect(w.text).not.toContain("drop table");
     expect(w.params[0]).toBe(500);
     expect(w.params).toContain("%x'; drop table parcelles;--%");
   });
 
   it("échappe les jokers LIKE du nom de société", () => {
-    const w = buildWhere({ pmNom: "50%_off" }, 1);
-    expect(w.params[0]).toBe("%50\\%\\_off%");
+    expect(buildWhere({ pmNom: "50%_off" }).params[0]).toBe("%50\\%\\_off%");
   });
 
   it("filtre vide = aucune condition", () => {
-    expect(buildWhere({}, 1)).toEqual({ text: "", params: [] });
+    expect(buildWhere({})).toEqual({ text: "", params: [] });
+  });
+
+  it("autant de ? que de paramètres, dans l'ordre", () => {
+    const w = buildWhere({ dpe: ["F", "G"], prixM2: [3000, 6000], scoreMin: 50 });
+    expect((w.text.match(/\?/g) ?? []).length).toBe(w.params.length);
+    expect(w.params).toEqual([3000, 6000, "F", "G", 50]);
   });
 
   it("drapeaux métier", () => {
-    expect(buildWhere({ flags: ["passoire", "monopropriete"] }, 1).text).toContain("f.is_passoire");
-    expect(buildWhere({ flags: ["monopropriete"] }, 1).text).toContain("f.is_monopropriete");
+    expect(buildWhere({ flags: ["passoire", "monopropriete"] }).text).toContain("f.is_passoire = 1");
+    expect(buildWhere({ flags: ["monopropriete"] }).text).toContain("f.is_monopropriete = 1");
   });
 });

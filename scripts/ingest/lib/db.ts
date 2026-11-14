@@ -8,8 +8,8 @@ let _sql: Sql | null = null;
 /** Connexion Postgres directe (DATABASE_URL). Chargée depuis .env / .env.local si présent. */
 export function db(): Sql {
   if (_sql) return _sql;
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL manquante (voir .env.example)");
+  const url = process.env.INGEST_PG_URL;
+  if (!url) throw new Error("INGEST_PG_URL manquante (Postgres+PostGIS local pour l'ingestion, voir .env.example)");
   _sql = postgres(url, { max: 4, onnotice: () => {}, idle_timeout: 20 });
   return _sql;
 }

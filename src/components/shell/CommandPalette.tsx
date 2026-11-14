@@ -52,8 +52,7 @@ export function CommandPalette() {
             <Command.Item className={item} onSelect={run(() => setTheme("light"))}>Thème clair</Command.Item>
           </Command.Group>
           <Command.Group heading="Navigation" className="text-xs text-muted-foreground [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1">
-            <Command.Item className={item} onSelect={run(() => router.push("/"))}>Accueil</Command.Item>
-            <Command.Item className={item} onSelect={run(() => router.push("/sources"))}>Sources et licences</Command.Item>
+            <Command.Item className={item} onSelect={run(() => router.push("/equipe"))}>Équipe</Command.Item>
             {selected && <Command.Item className={item} onSelect={run(() => select(null))}>Fermer la fiche</Command.Item>}
           </Command.Group>
         </Command.List>

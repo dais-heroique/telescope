@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { Command, Moon, Sun } from "lucide-react";
+import { Command, LogOut, Moon, Sun, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { MODULE_LIST } from "@/config/modules";
@@ -11,6 +12,11 @@ import { useUi } from "@/lib/store";
 export function Header() {
   const { resolvedTheme, setTheme } = useTheme();
   const { module, setModule, setPaletteOpen } = useUi();
+  const router = useRouter();
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
+  }
   return (
     <header className="z-30 flex h-12 shrink-0 items-center gap-3 border-b bg-card px-3">
       <Link href="/" aria-label="Accueil VIGIE">
@@ -34,6 +40,12 @@ export function Header() {
       <div className="ml-auto flex items-center gap-1">
         <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)} className="hidden gap-1.5 text-muted-foreground sm:inline-flex">
           <Command className="size-3.5" /> K
+        </Button>
+        <Button asChild variant="ghost" size="icon" aria-label="Équipe">
+          <Link href="/equipe"><Users /></Link>
+        </Button>
+        <Button variant="ghost" size="icon" aria-label="Se déconnecter" onClick={logout}>
+          <LogOut />
         </Button>
         <Button variant="ghost" size="icon" aria-label="Changer de thème" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
           <Sun className="hidden size-4 dark:block" />
