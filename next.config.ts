@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Modules natifs / binaires : ne pas les bundler
+  serverExternalPackages: ["@libsql/client", "libsql", "exceljs", "@react-pdf/renderer"],
+  poweredByHeader: false,
+  // Les fichiers de base locale ne doivent jamais partir dans le bundle serverless
+  outputFileTracingExcludes: { "*": [".data/**", "scripts/**", "e2e/**"] },
 };
 
 export default nextConfig;
