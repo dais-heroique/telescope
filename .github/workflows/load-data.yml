@@ -13,6 +13,11 @@ on:
         default: "74"
         required: true
 
+# Un nouveau déclenchement annule le chargement précédent (évite deux exports simultanés vers Turso)
+concurrency:
+  group: load-data
+  cancel-in-progress: true
+
 jobs:
   load:
     runs-on: ubuntu-latest

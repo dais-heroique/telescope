@@ -130,6 +130,12 @@ export default function MapView() {
       if (e.key === "Enter" && dm === "polygon") finishPolygon();
     };
     window.addEventListener("keydown", onKey);
+    // Double-clic = terminer le polygone (le 2ᵉ clic du double-clic a ajouté un doublon qu'on retire)
+    map.on("dblclick", () => {
+      if (useUi.getState().drawMode !== "polygon") return;
+      draw.pts.pop();
+      finishPolygon();
+    });
     map.on("mousemove", (e) => {
       if (!useUi.getState().drawMode) return;
       draw.hover = [e.lngLat.lng, e.lngLat.lat];

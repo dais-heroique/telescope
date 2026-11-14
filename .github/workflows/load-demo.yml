@@ -7,6 +7,11 @@ on:
     paths: [".github/load-demo-trigger.txt"]
   workflow_dispatch:
 
+# Un nouveau déclenchement annule le chargement précédent (évite deux exports simultanés vers Turso)
+concurrency:
+  group: load-demo
+  cancel-in-progress: true
+
 jobs:
   load:
     runs-on: ubuntu-latest

@@ -52,6 +52,10 @@ describe("score de probabilité de vente", () => {
     expect(scoreParcel({ ...pm, pmForme: "Association déclarée" }, ctx).factors.some((f) => f.label === "Propriété d'une société")).toBe(false);
     expect(scoreParcel({ ...pm, pmForme: "SAS, société par actions simplifiée" }, ctx).factors.some((f) => f.label === "Propriété d'une société")).toBe(true);
   });
+  it("pas de facteur de détention pour un immeuble en copropriété (vente d'un lot ≠ vente du bien)", () => {
+    const { factors } = scoreParcel({ ...base, holdYears: 15, collectifCopro: true }, ctx);
+    expect(factors.find((f) => f.label === "Durée de détention" || f.label === "Acquisition récente")).toBeUndefined();
+  });
   it("terrain nu sans vente : pas de facteur de détention", () => {
     const { factors } = scoreParcel({ ...base, nbBatiments: 0, holdYears: null }, ctx);
     expect(factors.find((f) => f.label === "Durée de détention")).toBeUndefined();

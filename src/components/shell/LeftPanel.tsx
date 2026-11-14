@@ -33,7 +33,7 @@ export function LeftPanel() {
           <button key={k} role="tab" aria-selected={leftTab === k} onClick={() => setLeftTab(k)} className={`rounded-md px-2 py-1 transition-colors ${leftTab === k ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{l}</button>
         ))}
       </div>
-      {leftTab === "filtres" && <div className="min-h-0 flex-1 overflow-y-auto pr-1"><FiltersPanel /></div>}
+      {leftTab === "filtres" && <FiltersPanel />}
       {leftTab === "resultats" && <ResultsPanel />}
       {leftTab === "calques" && (
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">

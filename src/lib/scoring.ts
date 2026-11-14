@@ -18,6 +18,8 @@ export interface ScoreInput {
   isDivisible: boolean;
   isMonopropriete: boolean;
   isDentCreuse: boolean;
+  /** Immeuble en copropriété : la « dernière vente » est celle d'un lot, pas du bien → pas de facteur de détention. */
+  collectifCopro?: boolean;
 }
 
 export interface CommuneContext {
@@ -49,7 +51,7 @@ export function scoreParcel(f: ScoreInput, c: CommuneContext): { score: number; 
   const built = f.nbBatiments > 0;
   const cycle = c.cycleYears ?? S.holding.defaultCycleYears;
   const hold = f.holdYears ?? (built ? S.holding.unknownSaleYears : null);
-  if (hold !== null) {
+  if (hold !== null && !f.collectifCopro) {
     if (f.holdYears !== null && f.holdYears < S.holding.recentSale.years) add("Acquisition récente", S.holding.recentSale.points, `vendu il y a ${r1(f.holdYears)} an`);
     else if (f.holdYears !== null && f.holdYears < S.holding.recentSale2.years) add("Acquisition récente", S.holding.recentSale2.points, `vendu il y a ${r1(f.holdYears)} ans`);
     else {

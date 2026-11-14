@@ -8,6 +8,7 @@ export interface MapUiState {
   layers: Record<string, boolean>;
   selected: { idu: string } | null;
   dvfColor: DvfColor;
+  filters: Record<string, unknown>;
 }
 
 const SOURCES = ["parcelles", "bati", "dvf", "plu", "permis", "copros", "pts"] as const;
@@ -80,6 +81,10 @@ export function addVigieLayers(map: MlMap, filters: string) {
 
   // ── Parcelles importées : remplissage coloré selon le mode actif ──
   map.addLayer({ id: "vparcelles-fill", type: "fill", source: "v-parcelles", "source-layer": "parcelles", minzoom: 14, paint: { "fill-color": neutralFill, "fill-opacity": 0.6 } });
+
+  // ── Mise en évidence des parcelles qui correspondent aux filtres actifs (tuiles déjà filtrées côté serveur) ──
+  map.addLayer({ id: "filter-hl-fill", type: "fill", source: "v-parcelles", "source-layer": "parcelles", minzoom: 14, layout: { visibility: "none" }, paint: { "fill-color": "#e8a317", "fill-opacity": 0.38 } });
+  map.addLayer({ id: "filter-hl-line", type: "line", source: "v-parcelles", "source-layer": "parcelles", minzoom: 14, layout: { visibility: "none" }, paint: { "line-color": "#b45309", "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1, 19, 2.5] } });
 
   // ── Parcellaire IGN (couverture France entière) : traits, survol, sélection, numéros ──
   map.addLayer({
@@ -157,6 +162,11 @@ export function syncVigieLayers(map: MlMap, st: MapUiState) {
   vis("parcelles-label", parcels);
   vis("batiments-fill", on("batiments") || st.basemap === "cadastre");
   if (map.getLayer("parcelles-line")) map.setPaintProperty("parcelles-line", "line-opacity", st.basemap === "cadastre" ? 0.9 : 0.55);
+
+  // Filtres actifs : les parcelles correspondantes sont surlignées sur la carte, sans rien d'autre à activer
+  const filtersActive = Object.keys(st.filters).length > 0;
+  vis("filter-hl-fill", filtersActive);
+  vis("filter-hl-line", filtersActive);
 
   // Calques importés
   vis("plu-fill", on("plu"));

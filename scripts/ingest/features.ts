@@ -188,13 +188,16 @@ async function detections(q: (text: string) => Promise<unknown>) {
            where np.idu <> p.idu and np.dep = $1 and st_dwithin(np.geom_3857, p.geom_3857, ${Math.round(D.dentCreuse.neighbourRadiusM / Math.cos((46 * Math.PI) / 180))})) >= ${D.dentCreuse.minBuiltNeighbours}`);
 }
 
-/** Contexte communal pour le score : cycle de revente, rotation, prix médian, vacance. */
+/**
+ * Contexte communal pour le score : cycle de revente, rotation, prix médian, vacance.
+ * Le cycle de revente se mesure sur les MAISONS : sur un immeuble, chaque vente de lot compterait comme une revente de la parcelle.
+ */
 async function communeStats(q: (text: string) => Promise<unknown>) {
   await q(`delete from commune_stats where dep = $1`);
   await q(`
     with sales as (
       select mp.idu, m.date_mutation, m.insee from dvf_mutation_parcelles mp join dvf_mutations m using (id_mutation)
-      where mp.dep = $1 and m.nature = 'Vente' and m.valeur_fonciere > 0 and m.type_principal in ('Maison', 'Appartement')
+      where mp.dep = $1 and m.nature = 'Vente' and m.valeur_fonciere > 0 and m.type_principal = 'Maison'
     ), gaps as (
       select insee, (date_mutation - lag(date_mutation) over (partition by idu order by date_mutation)) / 365.25 as y from sales
     ), cyc as (

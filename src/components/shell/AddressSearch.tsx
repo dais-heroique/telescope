@@ -59,7 +59,8 @@ export function AddressSearch() {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => e.key === "Enter" && data?.[0] && pick(data[0])}
-        placeholder="Adresse, commune ou parcelle (74010 000 AB 0123)"
+        placeholder="Adresse, commune ou parcelle…"
+        title="Ex. : 12 rue de la Paix Annecy · Annecy · 74010 000 AB 0123"
         className="pl-8"
         aria-label="Rechercher une adresse, une commune ou une parcelle"
         role="combobox"

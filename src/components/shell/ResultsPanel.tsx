@@ -70,14 +70,10 @@ function ExportDialog({ body, onClose }: { body: Record<string, unknown>; onClos
   );
 }
 
-export function ResultsPanel() {
-  const { body, zone } = useSearchScope();
-  const { sort, setSort, select, fly, module } = useUi();
-  const [clusters, setClusters] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [mailing, setMailing] = useState(false);
-  const saveSector = useCrmMutation((b: Record<string, unknown>) => crm.addSector(b));
-  const q = useQuery({
+/** Requête de recherche partagée (liste + compteur de l'onglet Filtres) : même clé → un seul appel réseau. */
+export function useSearchResults() {
+  const { body, scope, zone } = useSearchScope();
+  const query = useQuery({
     queryKey: ["search", body],
     enabled: !!body,
     placeholderData: (prev) => prev,
@@ -87,6 +83,16 @@ export function ResultsPanel() {
       return (await r.json()) as Res;
     },
   });
+  return { query, body, scope, zone };
+}
+
+export function ResultsPanel() {
+  const { query: q, body, zone } = useSearchResults();
+  const { sort, setSort, select, fly, module } = useUi();
+  const [clusters, setClusters] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [mailing, setMailing] = useState(false);
+  const saveSector = useCrmMutation((b: Record<string, unknown>) => crm.addSector(b));
   const parent = useRef<HTMLDivElement>(null);
   const rows = q.data?.rows ?? [];
   const virt = useVirtualizer({ count: rows.length, getScrollElement: () => parent.current, estimateSize: () => 74, overscan: 8 });

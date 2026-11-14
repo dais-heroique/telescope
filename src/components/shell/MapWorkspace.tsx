@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUi } from "@/lib/store";
 import { useSectors } from "@/components/crm/hooks";
+import { filtersSchema } from "@/lib/filters";
 import { Header } from "./Header";
 import { LeftPanel } from "./LeftPanel";
 import { RightPanel } from "./RightPanel";
@@ -38,7 +39,29 @@ function useSectorsSync() {
   }, [q.data]);
 }
 
+/** Les filtres et le module survivent au rechargement de la page (localStorage, jamais bloquant). */
+function usePersistedFilters() {
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("vigie:filters");
+      const parsed = raw ? filtersSchema.safeParse(JSON.parse(raw)) : null;
+      if (parsed?.success) useUi.getState().setFilters(parsed.data);
+    } catch {
+      /* stockage indisponible */
+    }
+    return useUi.subscribe((s, prev) => {
+      if (s.filters === prev.filters) return;
+      try {
+        localStorage.setItem("vigie:filters", JSON.stringify(s.filters));
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
+}
+
 export function MapWorkspace() {
+  usePersistedFilters();
   useDeepLink();
   useSectorsSync();
   const leftOpen = useUi((s) => s.leftOpen);
