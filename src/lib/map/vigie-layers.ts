@@ -83,14 +83,14 @@ export function addVigieLayers(map: MlMap, filters: string) {
   map.addLayer({ id: "vparcelles-fill", type: "fill", source: "v-parcelles", "source-layer": "parcelles", minzoom: 14, paint: { "fill-color": neutralFill, "fill-opacity": 0.6 } });
 
   // ── Mise en évidence des parcelles qui correspondent aux filtres actifs (tuiles déjà filtrées côté serveur) ──
-  map.addLayer({ id: "filter-hl-fill", type: "fill", source: "v-parcelles", "source-layer": "parcelles", minzoom: 14, layout: { visibility: "none" }, paint: { "fill-color": "#e8a317", "fill-opacity": 0.38 } });
-  map.addLayer({ id: "filter-hl-line", type: "line", source: "v-parcelles", "source-layer": "parcelles", minzoom: 14, layout: { visibility: "none" }, paint: { "line-color": "#b45309", "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1, 19, 2.5] } });
+  map.addLayer({ id: "filter-hl-fill", type: "fill", source: "v-parcelles", "source-layer": "parcelles", minzoom: 14, layout: { visibility: "none" }, paint: { "fill-color": "#6d4aff", "fill-opacity": 0.38 } });
+  map.addLayer({ id: "filter-hl-line", type: "line", source: "v-parcelles", "source-layer": "parcelles", minzoom: 14, layout: { visibility: "none" }, paint: { "line-color": "#3b1fa8", "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1, 19, 2.5] } });
 
   // ── Parcellaire IGN (couverture France entière) : traits, survol, sélection, numéros ──
   map.addLayer({
     id: "parcelles-fill", type: "fill", source: "pci", "source-layer": "parcelle", minzoom: 14,
     paint: {
-      "fill-color": "#e8a317",
+      "fill-color": "#6d4aff",
       "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.3, 0],
     },
   });
@@ -99,7 +99,7 @@ export function addVigieLayers(map: MlMap, filters: string) {
     paint: { "line-color": "#10294a", "line-opacity": 0.55, "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.3, 19, 1.2] },
   });
   map.addLayer({ id: "batiments-fill", type: "fill", source: "pci", "source-layer": "batiment", minzoom: 16, layout: { visibility: "none" }, paint: { "fill-color": "#6b7a90", "fill-opacity": 0.55 } });
-  map.addLayer({ id: "parcelle-selected", type: "line", source: "pci", "source-layer": "parcelle", filter: ["==", ["get", "idu"], ""], paint: { "line-color": "#e8a317", "line-width": 3 } });
+  map.addLayer({ id: "parcelle-selected", type: "line", source: "pci", "source-layer": "parcelle", filter: ["==", ["get", "idu"], ""], paint: { "line-color": "#6d4aff", "line-width": 3 } });
   map.addLayer({
     id: "parcelles-label", type: "symbol", source: "pci", "source-layer": "parcelle", minzoom: 18,
     layout: { "text-field": ["get", "numero"], "text-size": 11, "text-font": ["Noto Sans Regular"] },
@@ -129,8 +129,8 @@ export function addVigieLayers(map: MlMap, filters: string) {
   map.addLayer({ id: "sectors-fill", type: "fill", source: "sectors", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.1 } });
   map.addLayer({ id: "sectors-line", type: "line", source: "sectors", paint: { "line-color": ["get", "color"], "line-width": 2, "line-dasharray": [4, 2] } });
   map.addLayer({ id: "sectors-label", type: "symbol", source: "sectors", layout: { "text-field": ["get", "label"], "text-size": 12, "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#0d1626", "text-halo-color": "#fff", "text-halo-width": 1.5 } });
-  map.addLayer({ id: "zone-fill", type: "fill", source: "zone", paint: { "fill-color": "#e8a317", "fill-opacity": 0.12 } });
-  map.addLayer({ id: "zone-line", type: "line", source: "zone", paint: { "line-color": "#e8a317", "line-width": 3, "line-dasharray": [2, 1] } });
+  map.addLayer({ id: "zone-fill", type: "fill", source: "zone", paint: { "fill-color": "#6d4aff", "fill-opacity": 0.12 } });
+  map.addLayer({ id: "zone-line", type: "line", source: "zone", paint: { "line-color": "#6d4aff", "line-width": 3, "line-dasharray": [2, 1] } });
   map.addLayer({ id: "draft-fill", type: "fill", source: "draft", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": "#3a86ff", "fill-opacity": 0.12 } });
   map.addLayer({ id: "draft-line", type: "line", source: "draft", paint: { "line-color": "#3a86ff", "line-width": 2.5 } });
   map.addLayer({ id: "draft-pts", type: "circle", source: "draft", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#fff", "circle-stroke-color": "#3a86ff", "circle-stroke-width": 2 } });

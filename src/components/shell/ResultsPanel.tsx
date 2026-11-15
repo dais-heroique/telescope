@@ -147,9 +147,9 @@ export function ResultsPanel() {
                 <span className="flex flex-wrap gap-1 text-[10px]">
                   {r.is_pm ? <span className="rounded bg-secondary px-1">{r.pm_denomination ?? "personne morale"}</span> : null}
                   {r.is_passoire ? <span className="rounded bg-red-100 px-1 text-red-800">passoire</span> : null}
-                  {r.is_monopropriete ? <span className="rounded bg-amber-100 px-1 text-amber-900">monopropriété</span> : null}
-                  {r.is_divisible ? <span className="rounded bg-amber-100 px-1 text-amber-900">divisible</span> : null}
-                  {r.is_dent_creuse ? <span className="rounded bg-amber-100 px-1 text-amber-900">dent creuse</span> : null}
+                  {r.is_monopropriete ? <span className="rounded bg-violet-100 px-1 text-violet-900">monopropriété</span> : null}
+                  {r.is_divisible ? <span className="rounded bg-violet-100 px-1 text-violet-900">divisible</span> : null}
+                  {r.is_dent_creuse ? <span className="rounded bg-violet-100 px-1 text-violet-900">dent creuse</span> : null}
                 </span>
               </button>
             );

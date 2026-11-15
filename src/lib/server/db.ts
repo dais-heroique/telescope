@@ -96,12 +96,25 @@ create table if not exists opposition (
 );
 create table if not exists settings (key text primary key, value text not null);
 create table if not exists crm_sectors (
-  id text primary key, name text not null, polygon text not null, assigned_to text, color text not null default '#e8a317', created_by text, created_at integer not null default (unixepoch())
+  id text primary key, name text not null, polygon text not null, assigned_to text, color text not null default '#6d4aff', created_by text, created_at integer not null default (unixepoch())
 );
 `;
 
 export function ensureSchema(): Promise<void> {
-  globalThis.__vigieSchema ??= db().executeMultiple(APP_SCHEMA).catch((e) => {
+  globalThis.__vigieSchema ??= (async () => {
+    // Lecture seule d'abord : si tout existe déjà, aucune écriture n'est tentée
+    // (une base dont les écritures sont bloquées doit rester consultable).
+    const have = await db().execute("select name from sqlite_master where type='table'");
+    const names = new Set(have.rows.map((r) => String(r[0])));
+    const wanted = [...APP_SCHEMA.matchAll(/create table if not exists (\w+)/g)].map((m) => m[1]!);
+    if (wanted.every((n) => names.has(n))) return;
+    try {
+      await db().executeMultiple(APP_SCHEMA);
+    } catch (e) {
+      if (/block|forbidden|quota|upgrade/i.test(String(e))) console.error("schema: écritures bloquées, tables applicatives manquantes", String(e));
+      else throw e;
+    }
+  })().catch((e) => {
     globalThis.__vigieSchema = undefined;
     throw e;
   });

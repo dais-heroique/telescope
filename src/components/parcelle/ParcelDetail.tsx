@@ -53,7 +53,7 @@ function Aerial({ base }: { base: ParcelBase }) {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={aerialUrl(bb, W, H)} alt="Photo aérienne de la parcelle" className="block w-full" width={W} height={H} loading="lazy" />
       <svg viewBox={`0 0 ${W} ${H}`} className="pointer-events-none absolute inset-0 size-full" aria-hidden>
-        {rings.map((d, i) => <path key={i} d={d} fill="rgba(232,163,23,0.25)" stroke="#e8a317" strokeWidth="2.5" />)}
+        {rings.map((d, i) => <path key={i} d={d} fill="rgba(109,74,255,0.25)" stroke="#6d4aff" strokeWidth="2.5" />)}
       </svg>
       <span className="absolute bottom-1 right-1 rounded bg-black/50 px-1 text-[10px] text-white">© IGN</span>
     </div>

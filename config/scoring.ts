@@ -5,14 +5,16 @@
  */
 export const SCORING = {
   base: 10,
-  /** Durée de détention rapportée au cycle de revente local (médiane des intervalles entre ventes d'une même parcelle). */
+  /**
+   * Durée de détention. Le DVF ouvert ne remonte qu'à juillet 2021 : une durée n'est connue que si une vente existe
+   * dans cette fenêtre. Sans vente connue, le bien est détenu depuis au moins `unknownSaleYears` (signal positif forfaitaire).
+   */
   holding: {
-    maxPoints: 28,
-    defaultCycleYears: 8,
-    /** La fenêtre DVF commence en juillet 2021 : sans vente connue, la détention est au moins de cette durée. */
     unknownSaleYears: 5.3,
-    startRatio: 0.5,
-    fullRatio: 1.5,
+    unknownPoints: 12,
+    /** Vente connue : 0 point à `rampFromYears`, `rampMaxPoints` à `unknownSaleYears`. */
+    rampFromYears: 2,
+    rampMaxPoints: 6,
     recentSale: { years: 1, points: -18 },
     recentSale2: { years: 2, points: -8 },
   },

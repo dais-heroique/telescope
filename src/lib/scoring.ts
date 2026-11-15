@@ -47,17 +47,18 @@ export function scoreParcel(f: ScoreInput, c: CommuneContext): { score: number; 
     if (p !== 0) factors.push({ label, points: p, detail });
   };
 
-  // 1. Détention vs cycle local
+  // 1. Détention (fenêtre DVF = juillet 2021 → aujourd'hui)
   const built = f.nbBatiments > 0;
-  const cycle = c.cycleYears ?? S.holding.defaultCycleYears;
-  const hold = f.holdYears ?? (built ? S.holding.unknownSaleYears : null);
-  if (hold !== null && !f.collectifCopro) {
-    if (f.holdYears !== null && f.holdYears < S.holding.recentSale.years) add("Acquisition récente", S.holding.recentSale.points, `vendu il y a ${r1(f.holdYears)} an`);
-    else if (f.holdYears !== null && f.holdYears < S.holding.recentSale2.years) add("Acquisition récente", S.holding.recentSale2.points, `vendu il y a ${r1(f.holdYears)} ans`);
-    else {
-      const ratio = hold / cycle;
-      const t = clamp((ratio - S.holding.startRatio) / (S.holding.fullRatio - S.holding.startRatio), 0, 1);
-      add("Durée de détention", S.holding.maxPoints * t, `${f.holdYears !== null ? r1(hold) : "≥ " + r1(hold)} ans pour un cycle local de ${r1(cycle)} ans`);
+  if (!f.collectifCopro) {
+    if (f.holdYears !== null) {
+      if (f.holdYears < S.holding.recentSale.years) add("Acquisition récente", S.holding.recentSale.points, `vendu il y a ${r1(f.holdYears)} an`);
+      else if (f.holdYears < S.holding.recentSale2.years) add("Acquisition récente", S.holding.recentSale2.points, `vendu il y a ${r1(f.holdYears)} ans`);
+      else {
+        const t = clamp((f.holdYears - S.holding.rampFromYears) / (S.holding.unknownSaleYears - S.holding.rampFromYears), 0, 1);
+        add("Durée de détention", S.holding.rampMaxPoints * t, `${r1(f.holdYears)} ans depuis la dernière vente`);
+      }
+    } else if (built) {
+      add("Durée de détention", S.holding.unknownPoints, `aucune vente depuis juillet 2021 (≥ ${r1(S.holding.unknownSaleYears)} ans)`);
     }
   }
 

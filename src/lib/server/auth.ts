@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { adminEmails, SITE_URL } from "@/lib/env";
@@ -23,7 +23,6 @@ export interface User {
   isAdmin: boolean;
 }
 
-const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 export const normalizeEmail = (e: string) => e.trim().toLowerCase();
 
 export async function signSession(email: string): Promise<string> {
@@ -52,7 +51,14 @@ export async function getUser(): Promise<User | null> {
   if (!token) return null;
   const email = await verifySessionToken(token);
   if (!email) return null;
-  const u = await queryOne<{ email: string; name: string | null; is_admin: number }>("select email, name, is_admin from users where email = ?", [email]);
+  let u: { email: string; name: string | null; is_admin: number } | null = null;
+  try {
+    u = await queryOne<{ email: string; name: string | null; is_admin: number }>("select email, name, is_admin from users where email = ?", [email]);
+  } catch (e) {
+    console.error("[auth] lecture utilisateur", e instanceof Error ? e.message : e);
+    if (adminEmails().includes(email)) return { email, name: null, isAdmin: true };
+    return null;
+  }
   if (!u) return null;
   return { email: u.email, name: u.name, isAdmin: Boolean(u.is_admin) || adminEmails().includes(u.email) };
 }
@@ -72,27 +78,47 @@ export async function requireAdmin(): Promise<User> {
 /** Les administrateurs déclarés dans ADMIN_EMAILS sont créés à la première demande de lien. */
 export async function isAllowedEmail(email: string): Promise<boolean> {
   if (adminEmails().includes(email)) {
-    await run("insert into users (email, is_admin) values (?, 1) on conflict (email) do update set is_admin = 1", [email]);
+    try {
+      await run("insert into users (email, is_admin) values (?, 1) on conflict (email) do update set is_admin = 1", [email]);
+    } catch (e) {
+      // base en lecture seule (quota) : un administrateur déclaré reste autorisé
+      console.warn("[auth] upsert admin impossible :", e instanceof Error ? e.message : e);
+    }
     return true;
   }
   return Boolean(await queryOne("select 1 x from users where email = ?", [email]));
 }
 
-/** Crée un lien de connexion à usage unique (20 min). */
+/** Lien de connexion (20 min) : jeton signé sans état — aucune écriture en base nécessaire. */
 export async function createLoginLink(email: string): Promise<string> {
-  const token = randomBytes(32).toString("base64url");
-  await run("insert into login_tokens (hash, email, expires_at) values (?, ?, unixepoch() + ?)", [sha(token), email, TOKEN_MINUTES * 60]);
-  await run("delete from login_tokens where expires_at < unixepoch() - 86400");
+  const key = secretKey();
+  if (!key) throw new Error("AUTH_SECRET manquant");
+  const token = await new SignJWT({ purpose: "login", n: randomBytes(8).toString("hex") })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(email)
+    .setIssuedAt()
+    .setExpirationTime(`${TOKEN_MINUTES}m`)
+    .sign(key);
   return `${SITE_URL}/auth/verify?token=${token}`;
 }
 
-/** Consomme un jeton ; renvoie l'email si valide. */
+/** Vérifie un jeton de connexion ; renvoie l'email si valide. */
 export async function consumeLoginToken(token: string): Promise<string | null> {
-  const h = sha(token);
-  const r = await run("update login_tokens set used_at = unixepoch() where hash = ? and used_at is null and expires_at > unixepoch() returning email", [h]);
-  const email = r.rows[0]?.[0];
-  if (typeof email !== "string") return null;
-  await run("update users set last_login_at = unixepoch() where email = ?", [email]);
+  const key = secretKey();
+  if (!key) return null;
+  let email: string;
+  try {
+    const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"] });
+    if (payload.purpose !== "login" || typeof payload.sub !== "string") return null;
+    email = payload.sub;
+  } catch {
+    return null;
+  }
+  try {
+    await run("update users set last_login_at = unixepoch() where email = ?", [email]);
+  } catch {
+    /* non bloquant */
+  }
   return email;
 }
 

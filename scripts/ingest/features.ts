@@ -195,23 +195,24 @@ async function detections(q: (text: string) => Promise<unknown>) {
 async function communeStats(q: (text: string) => Promise<unknown>) {
   await q(`delete from commune_stats where dep = $1`);
   await q(`
-    with sales as (
-      select mp.idu, m.date_mutation, m.insee from dvf_mutation_parcelles mp join dvf_mutations m using (id_mutation)
-      where mp.dep = $1 and m.nature = 'Vente' and m.valeur_fonciere > 0 and m.type_principal = 'Maison'
-    ), gaps as (
-      select insee, (date_mutation - lag(date_mutation) over (partition by idu order by date_mutation)) / 365.25 as y from sales
-    ), cyc as (
-      select insee, percentile_cont(0.5) within group (order by y) as cycle, count(*) as n from gaps where y is not null and y > 0.25 group by insee
-    ), dep_cycle as (
-      select percentile_cont(0.5) within group (order by y) as c from gaps where y is not null and y > 0.25
+    with anchor as (
+      select max(date_mutation) as d from dvf_mutations where dep = $1
+    ), houses as (
+      -- Maisons : taux annuel de revente (ventes des 12 derniers mois couverts par le DVF / parc de maisons).
+      -- Un cycle mesuré sur les intervalles entre deux ventes serait biaisé (fenêtre DVF de 5 ans seulement) ;
+      -- on estime donc la durée moyenne de détention par 1 / taux annuel, bornée à 6–20 ans.
+      select f.insee,
+             count(*) as n,
+             100.0 * count(*) filter (where f.last_sale_date > (select d from anchor) - interval '12 months') / count(*) as rate
+      from parcel_features f where f.dep = $1 and f.usage_principal = 'Résidentiel individuel' group by f.insee
     ), turn as (
-      select f.insee, 100.0 * count(*) filter (where f.last_sale_date >= current_date - interval '12 months') / nullif(count(*) filter (where f.nb_batiments > 0), 0) as t
+      select f.insee, 100.0 * count(*) filter (where f.last_sale_date > (select d from anchor) - interval '12 months') / nullif(count(*) filter (where f.nb_batiments > 0), 0) as t
       from parcel_features f where f.dep = $1 group by f.insee
     ), px as (
       select insee, percentile_cont(0.5) within group (order by prix_m2) as p from dvf_mutations
-      where dep = $1 and prix_m2 is not null and type_principal in ('Maison', 'Appartement') and date_mutation >= current_date - interval '24 months' group by insee
+      where dep = $1 and prix_m2 is not null and type_principal in ('Maison', 'Appartement') and date_mutation > (select d from anchor) - interval '24 months' group by insee
     )
     insert into commune_stats (insee, dep, cycle_years, turnover_pct, prix_m2_median, vacance_pct)
-    select t.insee, $1, case when c.n >= 30 then c.cycle else (select c from dep_cycle) end, t.t, px.p, v.taux_vacance
-    from turn t left join cyc c using (insee) left join px using (insee) left join vacance_communes v on v.insee = t.insee`);
+    select t.insee, $1, case when h.n >= 50 and h.rate > 0 then least(20, greatest(6, 100 / h.rate)) else 12 end, t.t, px.p, v.taux_vacance
+    from turn t left join houses h using (insee) left join px using (insee) left join vacance_communes v on v.insee = t.insee`);
 }

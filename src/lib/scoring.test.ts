@@ -20,11 +20,13 @@ describe("score de probabilité de vente", () => {
     expect(recent.score).toBeLessThan(old.score);
     expect(recent.factors.some((f) => f.label === "Acquisition récente" && f.points < 0)).toBe(true);
   });
-  it("une détention longue au regard du cycle local augmente le score (plafonnée)", () => {
-    const a = scoreParcel({ ...base, holdYears: 10 }, ctx).score;
-    const b = scoreParcel({ ...base, holdYears: 40 }, ctx).score;
-    expect(a).toBeGreaterThan(scoreParcel({ ...base, holdYears: 3 }, ctx).score);
-    expect(b).toBe(scoreParcel({ ...base, holdYears: 14 }, ctx).score); // plafond atteint à 1,5 × cycle = 12 ans
+  it("sans vente depuis 2021, un bien bâti reçoit un bonus de détention forfaitaire ; plus la vente connue est ancienne, plus le score monte", () => {
+    const none = scoreParcel({ ...base, holdYears: null, lastSaleDate: null }, ctx);
+    expect(none.factors.find((f) => f.label === "Durée de détention")?.points).toBe(12);
+    const a = scoreParcel({ ...base, holdYears: 2.5 }, ctx).score;
+    const b = scoreParcel({ ...base, holdYears: 5 }, ctx).score;
+    expect(b).toBeGreaterThan(a);
+    expect(none.score).toBeGreaterThan(b);
   });
   it("passoire G > F > D", () => {
     const g = scoreParcel({ ...base, isPassoire: true, dpeLatest: "G", dpeWorst: "G" }, ctx).score;
@@ -37,10 +39,6 @@ describe("score de probabilité de vente", () => {
     const abs = factors.map((f) => Math.abs(f.points));
     expect(abs).toEqual([...abs].sort((x, y) => y - x));
     expect(factors.every((f) => f.label.length > 0)).toBe(true);
-  });
-  it("sans vente connue, un bien bâti est supposé détenu depuis la fenêtre DVF", () => {
-    const { factors } = scoreParcel({ ...base, holdYears: null, lastSaleDate: null }, ctx);
-    expect(factors.find((f) => f.label === "Durée de détention")?.detail).toContain("≥");
   });
   it("pas de plus-value latente pour un local d'activité (prix/m² non comparable au résidentiel)", () => {
     const hot = { ...base, lastSalePrixM2: 1000 };

@@ -13,7 +13,7 @@ const st = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", marginBottom: 3 },
   lbl: { width: 110 },
   barBox: { flex: 1, height: 9, backgroundColor: "#eef1f5" },
-  bar: { height: 9, backgroundColor: "#e8a317" },
+  bar: { height: 9, backgroundColor: "#6d4aff" },
   val: { width: 90, textAlign: "right" },
   th: { fontFamily: "Helvetica-Bold", color: "#555" },
   foot: { position: "absolute", bottom: 20, left: 40, right: 40, fontSize: 8, color: "#777" },
