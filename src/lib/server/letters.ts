@@ -1,6 +1,6 @@
 import { addressKey, renderTemplate, type LetterVars } from "@/lib/mail/render";
 import { cached, fetchJson, soft } from "./cache";
-import { query, queryOne, run } from "./db";
+import { appQuery, appQueryOne, run } from "./db";
 
 export interface AgencySettings {
   agence: string;
@@ -12,7 +12,7 @@ export interface AgencySettings {
 const EMPTY: AgencySettings = { agence: "", agent: "", signature: "", logo: null, expediteur: "" };
 
 export async function getSettings(): Promise<AgencySettings> {
-  const r = await queryOne<{ value: string }>("select value from settings where key = 'agency'");
+  const r = await appQueryOne<{ value: string }>("select value from settings where key = 'agency'");
   return r ? { ...EMPTY, ...JSON.parse(r.value) } : EMPTY;
 }
 export async function saveSettings(s: AgencySettings) {
@@ -101,7 +101,7 @@ export async function resolveRecipients(rows: ParcelOwnerRow[]): Promise<Recipie
 }
 
 export async function oppositionKeys(): Promise<Set<string>> {
-  return new Set((await query<{ key: string }>("select key from opposition")).map((r) => r.key));
+  return new Set((await appQuery<{ key: string }>("select key from opposition")).map((r) => r.key));
 }
 
 export function varsFor(r: Recipient, s: AgencySettings, date = new Date()): LetterVars {

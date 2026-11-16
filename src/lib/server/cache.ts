@@ -1,4 +1,4 @@
-import { query, run } from "./db";
+import { appQuery, run } from "./db";
 
 const mem = new Map<string, { exp: number; v: unknown }>();
 
@@ -11,7 +11,7 @@ export async function cached<T>(key: string, ttlSec: number, load: () => Promise
   const m = mem.get(key);
   if (m && m.exp > now) return m.v as T;
   try {
-    const rows = await query<{ payload: string }>("select payload from api_cache where key = ? and expires_at > unixepoch()", [key]);
+    const rows = await appQuery<{ payload: string }>("select payload from api_cache where key = ? and expires_at > unixepoch()", [key]);
     if (rows[0]) {
       const v = JSON.parse(rows[0].payload) as T;
       mem.set(key, { exp: now + Math.min(ttlSec, 300) * 1000, v });

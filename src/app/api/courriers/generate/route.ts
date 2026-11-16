@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { route } from "@/lib/server/api";
 import { newId } from "@/lib/server/crm";
-import { query, queryOne, run } from "@/lib/server/db";
+import { appQueryOne, query, run } from "@/lib/server/db";
 import { buildLetters, getSettings, type ParcelOwnerRow } from "@/lib/server/letters";
 import { renderLettersPdf } from "@/lib/server/letters-pdf";
 import { searchParcels, searchSchema } from "@/lib/server/search";
@@ -22,7 +22,7 @@ const csvCell = (v: string) => (/[;"\n\r]/.test(v) || /^[=+\-@]/.test(v) ? `"${(
 
 /** Génère les courriers (un par propriétaire, dédoublonnés, liste d'opposition respectée) : PDF, CSV de publipostage ou simple aperçu. */
 export const POST = route({ body }, async ({ user, body }) => {
-  const tpl = await queryOne<{ id: string; subject: string | null; body: string }>("select id, subject, body from letter_templates where id = ?", [body.templateId]);
+  const tpl = await appQueryOne<{ id: string; subject: string | null; body: string }>("select id, subject, body from letter_templates where id = ?", [body.templateId]);
   if (!tpl) return NextResponse.json({ error: "modèle introuvable" }, { status: 404 });
 
   let rows: ParcelOwnerRow[];

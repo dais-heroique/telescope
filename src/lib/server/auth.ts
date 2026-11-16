@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { adminEmails, SITE_URL } from "@/lib/env";
-import { query, queryOne, run } from "./db";
+import { appQuery, appQueryOne, run } from "./db";
 
 export const SESSION_COOKIE = "vigie_session";
 const SESSION_DAYS = 60;
@@ -53,7 +53,7 @@ export async function getUser(): Promise<User | null> {
   if (!email) return null;
   let u: { email: string; name: string | null; is_admin: number } | null = null;
   try {
-    u = await queryOne<{ email: string; name: string | null; is_admin: number }>("select email, name, is_admin from users where email = ?", [email]);
+    u = await appQueryOne<{ email: string; name: string | null; is_admin: number }>("select email, name, is_admin from users where email = ?", [email]);
   } catch (e) {
     console.error("[auth] lecture utilisateur", e instanceof Error ? e.message : e);
     if (adminEmails().includes(email)) return { email, name: null, isAdmin: true };
@@ -86,7 +86,7 @@ export async function isAllowedEmail(email: string): Promise<boolean> {
     }
     return true;
   }
-  return Boolean(await queryOne("select 1 x from users where email = ?", [email]));
+  return Boolean(await appQueryOne("select 1 x from users where email = ?", [email]));
 }
 
 /** Lien de connexion (20 min) : jeton signé sans état — aucune écriture en base nécessaire. */
@@ -139,5 +139,5 @@ export async function sendLoginEmail(email: string, link: string): Promise<boole
 }
 
 export async function listUsers() {
-  return query<{ email: string; name: string | null; is_admin: number; created_at: number; last_login_at: number | null }>("select * from users order by created_at");
+  return appQuery<{ email: string; name: string | null; is_admin: number; created_at: number; last_login_at: number | null }>("select * from users order by created_at");
 }

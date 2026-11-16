@@ -1,44 +1,108 @@
 import { normalizeLibsqlUrl } from "@/lib/libsql-url";
 import { createClient, type Client, type InValue } from "@libsql/client";
+import { createReadStream, createWriteStream } from "node:fs";
+import { readFile, rename, stat } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createGunzip } from "node:zlib";
 
 declare global {
-  var __vigieDb: Client | undefined;
+  var __vigieApp: Client | undefined;
+  var __vigieData: Promise<Client> | undefined;
   var __vigieSchema: Promise<void> | undefined;
 }
 
 /**
- * Base de l'application : libSQL (Turso en production, fichier SQLite en local).
- * Contient les données importées (parcelles, ventes, DPE…) ET les tables applicatives (utilisateurs, CRM…).
+ * Deux bases :
+ *  - « application » (utilisateurs, CRM, courriers, cache) : libSQL/Turso en production, fichier SQLite en local. Peu d'écritures.
+ *  - « données » (parcelles, ventes, DPE…) : lecture seule. En production, base allégée embarquée dans le déploiement
+ *    (data/lite/*.gz, décompressée dans /tmp au démarrage à froid) → aucune écriture ni lecture Turso, aucun quota.
+ *    En local, la base complète .data/vigie.db. VIGIE_DATA=turso force la lecture des données dans Turso.
  */
 export function db(): Client {
-  globalThis.__vigieDb ??= createClient({
+  globalThis.__vigieApp ??= createClient({
     url: normalizeLibsqlUrl(process.env.TURSO_DATABASE_URL),
     authToken: process.env.TURSO_AUTH_TOKEN || undefined,
   });
-  return globalThis.__vigieDb;
+  return globalThis.__vigieApp;
+}
+
+const LITE_DIR = path.join(process.cwd(), "data", "lite");
+
+/** Base allégée embarquée : assemblée une fois par instance dans /tmp, puis ouverte en fichier. */
+async function openBundled(): Promise<Client | null> {
+  let manifest: { bytes: number; parts: string[]; builtAt: string };
+  try {
+    manifest = JSON.parse(await readFile(path.join(LITE_DIR, "manifest.json"), "utf8"));
+  } catch {
+    return null;
+  }
+  const target = path.join(os.tmpdir(), `vigie-lite-${manifest.builtAt.replace(/\W/g, "")}.db`);
+  const ok = await stat(target).then((s) => s.size === manifest.bytes).catch(() => false);
+  if (!ok) {
+    const tmp = `${target}.${process.pid}.part`;
+    const t0 = Date.now();
+    const parts = Readable.from((async function* () { for (const f of manifest.parts) yield* createReadStream(path.join(LITE_DIR, f)); })());
+    await pipeline(parts, createGunzip(), createWriteStream(tmp));
+    await rename(tmp, target);
+    console.log(`[db] base allégée prête (${Math.round(manifest.bytes / 1e6)} Mo) en ${Date.now() - t0} ms`);
+  }
+  return createClient({ url: `file:${target}` });
+}
+
+export function dataDb(): Promise<Client> {
+  globalThis.__vigieData ??= (async () => {
+    const wantBundle = process.env.VIGIE_DATA === "bundle" || (process.env.NODE_ENV === "production" && process.env.VIGIE_DATA !== "turso");
+    if (wantBundle) {
+      const c = await openBundled();
+      if (c) return c;
+    }
+    return db();
+  })().catch((e) => {
+    globalThis.__vigieData = undefined;
+    throw e;
+  });
+  return globalThis.__vigieData;
 }
 
 export type Row = Record<string, unknown>;
 
-/** Requête SELECT → tableau d'objets. */
-export async function query<T = Row>(sql: string, args: InValue[] = []): Promise<T[]> {
-  await ensureSchema();
-  const r = await db().execute({ sql, args });
-  return r.rows.map((row) => {
+const toRows = <T,>(r: { columns: string[]; rows: ArrayLike<unknown>[] }): T[] =>
+  r.rows.map((row) => {
     const o: Row = {};
     r.columns.forEach((c, i) => (o[c] = row[i]));
     return o as T;
   });
+
+/** SELECT sur les données importées (lecture seule) → tableau d'objets. */
+export async function query<T = Row>(sql: string, args: InValue[] = []): Promise<T[]> {
+  return toRows<T>(await (await dataDb()).execute({ sql, args }));
 }
 
 export async function queryOne<T = Row>(sql: string, args: InValue[] = []): Promise<T | null> {
   return (await query<T>(sql, args))[0] ?? null;
 }
 
+/** SELECT sur les tables applicatives (utilisateurs, CRM, courriers, cache). */
+export async function appQuery<T = Row>(sql: string, args: InValue[] = []): Promise<T[]> {
+  await ensureSchema();
+  return toRows<T>(await db().execute({ sql, args }));
+}
+
+export async function appQueryOne<T = Row>(sql: string, args: InValue[] = []): Promise<T | null> {
+  return (await appQuery<T>(sql, args))[0] ?? null;
+}
+
+/** Écriture sur les tables applicatives. */
 export async function run(sql: string, args: InValue[] = []) {
   await ensureSchema();
   return db().execute({ sql, args });
 }
+
+/** Les écritures sont-elles refusées par la base (quota Turso atteint) ? */
+export const isWriteBlocked = (e: unknown) => /block|forbidden|quota|upgrade/i.test(e instanceof Error ? e.message : String(e));
 
 /** Tables applicatives (créées au besoin ; les tables de données sont créées par l'export). */
 const APP_SCHEMA = `

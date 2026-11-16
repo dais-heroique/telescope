@@ -2,15 +2,15 @@ import { z } from "zod";
 import { DEFAULT_TEMPLATE } from "@/lib/mail/render";
 import { route } from "@/lib/server/api";
 import { newId } from "@/lib/server/crm";
-import { query, run } from "@/lib/server/db";
+import { appQuery, run } from "@/lib/server/db";
 
 export const runtime = "nodejs";
 
 export const GET = route({}, async ({ user }) => {
-  let rows = await query<{ id: string; name: string; subject: string | null; body: string }>("select id, name, subject, body from letter_templates order by name");
+  let rows = await appQuery<{ id: string; name: string; subject: string | null; body: string }>("select id, name, subject, body from letter_templates order by name");
   if (!rows.length) {
     await run("insert into letter_templates (id, name, subject, body, created_by) values (?,?,?,?,?)", [newId(), DEFAULT_TEMPLATE.name, DEFAULT_TEMPLATE.subject, DEFAULT_TEMPLATE.body, user.email]);
-    rows = await query("select id, name, subject, body from letter_templates order by name");
+    rows = await appQuery("select id, name, subject, body from letter_templates order by name");
   }
   return { templates: rows };
 });
