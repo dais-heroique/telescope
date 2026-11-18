@@ -175,7 +175,7 @@ export function FiltersPanel() {
             <p>Les biens correspondants apparaissent sur la carte à partir du zoom 14 (surlignés en violet). <button type="button" className="font-medium underline" onClick={() => viewport && useUi.getState().fly((viewport.bbox[0] + viewport.bbox[2]) / 2, (viewport.bbox[1] + viewport.bbox[3]) / 2, 14.5)}>Zoomer ici</button></p>
           ) : (
             <p>
-              <strong>{scope ? (query.data?.tooWide ? "Zone trop large" : `${query.data?.total ?? "…"}${query.data?.truncated ? "+" : ""} bien(s)`) : "—"}</strong> {zone ? "dans la zone" : "dans la vue"}, surlignés en violet sur la carte.
+              <strong>{scope ? (query.data?.tooWide ? "Zone trop large" : `${query.data?.total ?? "…"}${query.data?.truncated ? "+" : ""} bien(s)`) : "—"}</strong> {zone ? "dans la zone" : "dans la vue"}, surlignés en violet sur la carte. Les points de ventes, permis et copropriétés ne montrent que ceux de ces biens.
             </p>
           )}
           <Button size="sm" type="button" variant="outline" className="w-full" onClick={() => setLeftTab("resultats")}>Voir la liste</Button>

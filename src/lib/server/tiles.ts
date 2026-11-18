@@ -21,6 +21,16 @@ type Blob = ArrayBuffer | Uint8Array;
 const feat = (geometry: GeoJSON.Geometry, properties: Props): GeoJSON.Feature => ({ type: "Feature", geometry, properties });
 const point = (lon: number, lat: number, properties: Props) => feat({ type: "Point", coordinates: [lon, lat] }, properties);
 
+/**
+ * Condition SQL « lié à au moins une parcelle qui satisfait les filtres » pour les couches de points (ventes, permis, copropriétés).
+ * Sans filtre actif : aucune restriction. `link` = table de liaison vers les parcelles, `key` = clé de l'objet.
+ */
+function linked(filters: Filters, link: string, key: string): { text: string; params: (string | number)[] } {
+  if (Object.keys(filters).length === 0) return { text: "", params: [] };
+  const w = buildWhere(filters);
+  return { text: ` and ${key} in (select l.${key} from ${link} l join parcelles f on f.idu = l.idu where 1 = 1${w.text})`, params: [...w.params] };
+}
+
 /** Lignes SQL d'une couche → FeatureCollection GeoJSON. */
 async function layerFeatures(layer: TileLayer, z: number, x: number, y: number, filters: Filters): Promise<GeoJSON.Feature[]> {
   switch (layer) {
@@ -52,27 +62,31 @@ async function layerFeatures(layer: TileLayer, z: number, x: number, y: number, 
     }
     case "dvf": {
       const r = pointTileRange(z, x, y, POINT_LEVEL);
+      // Filtres actifs : seules les ventes portant sur des parcelles qui satisfont les filtres restent affichées
+      const w = linked(filters, "dvf_mutation_parcelles", "id_mutation");
       const rows = await query<Props & { lon: number; lat: number }>(
         `select id_mutation as id, date_mutation as d, prix_m2 as p, valeur_fonciere as v, type_principal as t, lon, lat from dvf_mutations
-         where tx between ? and ? and ty between ? and ? and valeur_fonciere > 0 ${z >= 14 ? "" : "and prix_m2 is not null"}`,
-        [r.x0, r.x1, r.y0, r.y1],
+         where tx between ? and ? and ty between ? and ? and valeur_fonciere > 0 ${z >= 14 ? "" : "and prix_m2 is not null"}${w.text}`,
+        [r.x0, r.x1, r.y0, r.y1, ...w.params],
       );
       return rows.map(({ lon, lat, ...p }) => point(lon, lat, p));
     }
     case "permis": {
       const r = pointTileRange(z, x, y, POINT_LEVEL);
+      const w = linked(filters, "permis_parcelles", "num_dau");
       const rows = await query<Props & { lon: number; lat: number }>(
         `select num_dau as id, type_dau as t, kind as k, date_autorisation as d, nb_logements as nl, lon, lat from permis
-         where tx between ? and ? and ty between ? and ? and date_autorisation >= date('now', '-5 years') and lon is not null`,
-        [r.x0, r.x1, r.y0, r.y1],
+         where tx between ? and ? and ty between ? and ? and date_autorisation >= date('now', '-5 years') and lon is not null${w.text}`,
+        [r.x0, r.x1, r.y0, r.y1, ...w.params],
       );
       return rows.map(({ lon, lat, ...p }) => point(lon, lat, p));
     }
     case "copros": {
       const r = pointTileRange(z, x, y, POINT_LEVEL);
+      const w = linked(filters, "rnic_parcelles", "numero");
       const rows = await query<Props & { lon: number; lat: number }>(
-        `select numero as id, nom as n, nb_lots as lots, periode_construction as per, lon, lat from rnic_copros where tx between ? and ? and ty between ? and ? and lon is not null`,
-        [r.x0, r.x1, r.y0, r.y1],
+        `select numero as id, nom as n, nb_lots as lots, periode_construction as per, lon, lat from rnic_copros where tx between ? and ? and ty between ? and ? and lon is not null${w.text}`,
+        [r.x0, r.x1, r.y0, r.y1, ...w.params],
       );
       return rows.map(({ lon, lat, ...p }) => point(lon, lat, p));
     }

@@ -15,7 +15,7 @@ const SOURCES = ["parcelles", "bati", "dvf", "plu", "permis", "copros", "pts"] a
 type Src = (typeof SOURCES)[number];
 
 /** Sources filtrées par la sélection de l'utilisateur (les autres ne dépendent pas des filtres). */
-const FILTERED: Src[] = ["parcelles", "pts"];
+const FILTERED: Src[] = ["parcelles", "pts", "dvf", "permis", "copros"];
 
 function tileUrl(layer: Src, f: string) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
