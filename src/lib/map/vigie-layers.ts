@@ -58,13 +58,13 @@ export function addVigieLayers(map: MlMap, filters: string) {
 
   // ── Zonage PLU (sous les parcelles) ──
   map.addLayer({
-    id: "plu-fill", type: "fill", source: "v-plu", "source-layer": "plu", minzoom: 10, layout: { visibility: "none" },
+    id: "plu-fill", type: "fill", source: "v-plu", "source-layer": "plu", minzoom: 12, layout: { visibility: "none" },
     paint: {
       "fill-color": ["case", ["==", ["get", "t"], "U"], "#e63946", ["in", ["slice", ["get", "t"], 0, 2], ["literal", ["AU"]]], "#f4a261", ["==", ["slice", ["get", "t"], 0, 1], "A"], "#8ab17d", "#2a9d8f"],
       "fill-opacity": 0.38,
     },
   });
-  map.addLayer({ id: "plu-line", type: "line", source: "v-plu", "source-layer": "plu", minzoom: 10, layout: { visibility: "none" }, paint: { "line-color": "#0d1626", "line-opacity": 0.35, "line-width": 0.6 } });
+  map.addLayer({ id: "plu-line", type: "line", source: "v-plu", "source-layer": "plu", minzoom: 12, layout: { visibility: "none" }, paint: { "line-color": "#0d1626", "line-opacity": 0.35, "line-width": 0.6 } });
   map.addLayer({
     id: "plu-label", type: "symbol", source: "v-plu", "source-layer": "plu", minzoom: 14, layout: { visibility: "none", "text-field": ["get", "l"], "text-size": 11, "text-font": ["Noto Sans Regular"] },
     paint: { "text-color": "#0d1626", "text-halo-color": "#fff", "text-halo-width": 1.2 },
@@ -108,7 +108,7 @@ export function addVigieLayers(map: MlMap, filters: string) {
 
   // ── Heatmap de score + points d'intérêt ──
   map.addLayer({
-    id: "score-heat", type: "heatmap", source: "v-pts", "source-layer": "pts", minzoom: 8, maxzoom: 16, layout: { visibility: "none" },
+    id: "score-heat", type: "heatmap", source: "v-pts", "source-layer": "pts", minzoom: 11, maxzoom: 16, layout: { visibility: "none" },
     paint: {
       "heatmap-weight": ["interpolate", ["linear"], ["get", "s"], 40, 0.2, 100, 1],
       "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 8, 0.4, 15, 1.4],
@@ -134,7 +134,7 @@ export function addVigieLayers(map: MlMap, filters: string) {
   map.addLayer({ id: "draft-fill", type: "fill", source: "draft", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": "#3a86ff", "fill-opacity": 0.12 } });
   map.addLayer({ id: "draft-line", type: "line", source: "draft", paint: { "line-color": "#3a86ff", "line-width": 2.5 } });
   map.addLayer({ id: "draft-pts", type: "circle", source: "draft", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#fff", "circle-stroke-color": "#3a86ff", "circle-stroke-width": 2 } });
-  circle("dvf-circles", "dvf", prixColor(), 11, 4);
+  circle("dvf-circles", "dvf", prixColor(), 12, 4);
   circle("permis-circles", "permis", "#06d6a0", 13, 4);
   circle("copros-circles", "copros", "#3a86ff", 12, 5);
 }

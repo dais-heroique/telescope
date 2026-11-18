@@ -10,7 +10,7 @@ export const TILE_LAYERS = ["parcelles", "bati", "dvf", "plu", "permis", "copros
 export type TileLayer = (typeof TILE_LAYERS)[number];
 
 /** Zoom minimal servi par couche (au-dessous : tuile vide, pour protéger la base). */
-export const MIN_ZOOM: Record<TileLayer, number> = { parcelles: 14, bati: 15, dvf: 11, plu: 10, permis: 13, copros: 12, pts: 8 };
+export const MIN_ZOOM: Record<TileLayer, number> = { parcelles: 14, bati: 15, dvf: 12, plu: 12, permis: 13, copros: 12, pts: 11 };
 
 // geojson-vt v4 : export par défaut = classe (les typings embarqués ne la déclarent pas comme constructible).
 const GeoJSONVT = geojsonvtModule as unknown as new (data: GeoJSON.FeatureCollection, options: Record<string, number>) => { getTile(z: number, x: number, y: number): unknown };

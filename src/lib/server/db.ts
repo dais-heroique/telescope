@@ -1,4 +1,5 @@
 import { normalizeLibsqlUrl } from "@/lib/libsql-url";
+import { scopedClient } from "./shards";
 import { createClient, type Client, type InValue } from "@libsql/client";
 import { createReadStream, createWriteStream } from "node:fs";
 import { readFile, rename, stat } from "node:fs/promises";
@@ -78,7 +79,9 @@ const toRows = <T,>(r: { columns: string[]; rows: ArrayLike<unknown>[] }): T[] =
 
 /** SELECT sur les données importées (lecture seule) → tableau d'objets. */
 export async function query<T = Row>(sql: string, args: InValue[] = []): Promise<T[]> {
-  return toRows<T>(await (await dataDb()).execute({ sql, args }));
+  // Portée « morceaux » (withData) si active, sinon base embarquée / locale
+  const client = scopedClient() ?? (await dataDb());
+  return toRows<T>(await client.execute({ sql, args }));
 }
 
 export async function queryOne<T = Row>(sql: string, args: InValue[] = []): Promise<T | null> {

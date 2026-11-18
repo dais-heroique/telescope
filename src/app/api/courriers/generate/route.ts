@@ -6,6 +6,7 @@ import { appQueryOne, query, run } from "@/lib/server/db";
 import { buildLetters, getSettings, type ParcelOwnerRow } from "@/lib/server/letters";
 import { renderLettersPdf } from "@/lib/server/letters-pdf";
 import { searchParcels, searchSchema } from "@/lib/server/search";
+import { withData } from "@/lib/server/shards";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,7 +28,8 @@ export const POST = route({ body }, async ({ user, body }) => {
 
   let rows: ParcelOwnerRow[];
   if (body.idus?.length) {
-    rows = await query<ParcelOwnerRow>(`select ${COLS} from parcelles f where f.idu in (${body.idus.map(() => "?").join(",")})`, body.idus);
+    const idus = body.idus;
+    rows = await withData({ idus }, () => query<ParcelOwnerRow>(`select ${COLS} from parcelles f where f.idu in (${idus.map(() => "?").join(",")})`, idus));
   } else if (body.search) {
     const res = await searchParcels<ParcelOwnerRow>({ ...body.search, limit: 500, offset: 0 }, { columns: COLS, rawLimit: 500 });
     if (res.tooWide) return NextResponse.json({ error: "zone trop large" }, { status: 400 });

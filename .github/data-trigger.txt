@@ -1,0 +1,3 @@
+74
+# Première ligne : départements à (re)construire, séparés par des espaces — ex. « 74 73 38 », « metropole » (01–95) ou « france » (+ DOM).
+# Un push sur ce fichier lance le workflow « Construire les données ». Le reste du fichier est ignoré.

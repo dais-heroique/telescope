@@ -5,6 +5,7 @@ import { pointInGeometry } from "@/lib/parcelle/geo";
 import { EXPORT_COLUMNS } from "@/lib/export-columns";
 import { LEVELS } from "./data-schema";
 import { query } from "./db";
+import { ScopeTooWide, withData } from "./shards";
 
 export const SORTS = {
   score: "f.score desc nulls last",
@@ -68,12 +69,20 @@ export async function searchParcels<T = ListRow>(p: SearchParams, opts: { column
   const idx = rangeIndexSql("idx_parcelles", r, [...LEVELS.parcelles], { table: "parcelles", idCol: "idu", xCol: "t16x", yCol: "t16y" });
   const w = buildWhere(p.filters);
   const rawLimit = opts.rawLimit ?? RAW_LIMIT;
-  const rows = await query<T & { lon: number; lat: number }>(
-    `select ${opts.columns ?? LIST_COLUMNS} from parcelles f
-     where f.idu in (${idx.sql}) and f.lon between ? and ? and f.lat between ? and ?${w.text}
-     order by ${SORTS[p.sort]} limit ${rawLimit}`,
-    [...idx.args, bb[0], bb[2], bb[1], bb[3], ...w.params],
-  );
+  let rows: (T & { lon: number; lat: number })[];
+  try {
+    rows = await withData({ bbox: bb }, () =>
+      query<T & { lon: number; lat: number }>(
+        `select ${opts.columns ?? LIST_COLUMNS} from parcelles f
+         where f.idu in (${idx.sql}) and f.lon between ? and ? and f.lat between ? and ?${w.text}
+         order by ${SORTS[p.sort]} limit ${rawLimit}`,
+        [...idx.args, bb[0], bb[2], bb[1], bb[3], ...w.params],
+      ),
+    );
+  } catch (e) {
+    if (e instanceof ScopeTooWide) return { rows: [], total: 0, truncated: false, tooWide: true };
+    throw e;
+  }
   const poly: GeoJSON.Polygon | null = p.polygon ?? null;
   const inside = poly ? rows.filter((x) => pointInGeometry([x.lon, x.lat], poly)) : rows;
   return { rows: inside, total: inside.length, truncated: rows.length >= rawLimit, tooWide: false };

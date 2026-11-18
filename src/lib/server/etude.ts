@@ -3,6 +3,7 @@ import { latToTileY, lonToTileX } from "@/lib/geo/tile-index";
 import { pointInGeometry } from "@/lib/parcelle/geo";
 import { cached, fetchJson, soft } from "./cache";
 import { query } from "./db";
+import { withData, type ScopeSpec } from "./shards";
 import { searchParcels } from "./search";
 
 const median = (a: number[]) => {
@@ -12,10 +13,20 @@ const median = (a: number[]) => {
   return Math.round(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
 };
 
+const polygonBBox = (p: GeoJSON.Polygon): [number, number, number, number] => {
+  const pts = p.coordinates.flat();
+  return [Math.min(...pts.map((c) => c[0]!)), Math.min(...pts.map((c) => c[1]!)), Math.max(...pts.map((c) => c[0]!)), Math.max(...pts.map((c) => c[1]!))];
+};
+
 export type EtudeScope = { insee: string } | { polygon: GeoJSON.Polygon };
 
 /** Étude de marché d'une commune ou d'une zone dessinée : transactions, détention, DPE, démographie, parc social, permis. */
 export async function buildEtude(scope: EtudeScope): Promise<Etude> {
+  const spec: ScopeSpec = "insee" in scope && scope.insee ? { insees: [scope.insee] } : { bbox: polygonBBox((scope as { polygon: GeoJSON.Polygon }).polygon) };
+  return withData(spec, () => buildEtudeScoped(scope));
+}
+
+async function buildEtudeScoped(scope: EtudeScope): Promise<Etude> {
   const notes: string[] = [];
   let label: string;
   let bb: [number, number, number, number] | null = null;

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getBase } from "@/lib/server/parcelle/base";
+import { withData } from "@/lib/server/shards";
 import { getBati } from "@/lib/server/parcelle/bati";
 import { getEnergie } from "@/lib/server/parcelle/energie";
 import { getEntreprise } from "@/lib/server/parcelle/entreprise";
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ idu: string
   const q = params.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!q.success) return NextResponse.json({ error: "paramètres invalides" }, { status: 400 });
   try {
+    return await withData({ idus: [idu.toUpperCase()], near: true }, async () => {
     const base = await getBase(idu.toUpperCase());
     if (!base) return NextResponse.json({ error: "parcelle introuvable" }, { status: 404 });
     const data = await {
@@ -47,6 +49,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ idu: string
       entreprise: () => getEntreprise(base),
     }[section as Section]();
     return NextResponse.json(data, { headers: { "Cache-Control": "private, max-age=120" } });
+    });
   } catch (e) {
     console.error("parcelle", section, idu, e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "erreur serveur" }, { status: 500 });

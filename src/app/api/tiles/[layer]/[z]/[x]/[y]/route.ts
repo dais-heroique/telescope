@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { parseFilters } from "@/lib/filters";
+import { ScopeTooWide, tileBBox, withData } from "@/lib/server/shards";
 import { MIN_ZOOM, renderTile, TILE_LAYERS, type TileLayer } from "@/lib/server/tiles";
 
 export const runtime = "nodejs";
@@ -25,10 +26,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ layer: stri
     return NextResponse.json({ error: "filtres invalides" }, { status: 400 });
   }
   try {
-    const mvt = await renderTile(layer as TileLayer, zi, xi, yi, filters);
+    const mvt = await withData({ bbox: tileBBox(zi, xi, yi) }, () => renderTile(layer as TileLayer, zi, xi, yi, filters));
     if (!mvt || mvt.length === 0) return new NextResponse(null, { status: 204, headers });
     return new Response(new Uint8Array(mvt), { headers });
   } catch (e) {
+    if (e instanceof ScopeTooWide) return new NextResponse(null, { status: 204, headers });
     console.error("tile error", layer, zi, xi, yi, e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "erreur serveur" }, { status: 500 });
   }

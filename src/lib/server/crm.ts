@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Activity, Contact, Lead, Note, Sector, StageKey, Task } from "@/lib/crm/types";
 import { appQuery, appQueryOne, query, run } from "./db";
+import { withData } from "./shards";
 
 export const newId = () => randomUUID().replace(/-/g, "").slice(0, 16);
 
@@ -22,12 +23,14 @@ async function withParcels(rows: LeadRow[]): Promise<LeadRow[]> {
   if (!idus.length) return rows;
   try {
     const found = new Map<string, Pick<LeadRow, "adresse" | "score" | "contenance" | "lon" | "lat">>();
-    for (let i = 0; i < idus.length; i += 400) {
-      const chunk = idus.slice(i, i + 400);
-      for (const p of await query<{ idu: string } & Pick<LeadRow, "adresse" | "score" | "contenance" | "lon" | "lat">>(
-        `select idu, adresse, score, contenance, lon, lat from parcelles where idu in (${chunk.map(() => "?").join(",")})`, chunk,
-      )) found.set(p.idu, p);
-    }
+    await withData({ idus }, async () => {
+      for (let i = 0; i < idus.length; i += 400) {
+        const chunk = idus.slice(i, i + 400);
+        for (const p of await query<{ idu: string } & Pick<LeadRow, "adresse" | "score" | "contenance" | "lon" | "lat">>(
+          `select idu, adresse, score, contenance, lon, lat from parcelles where idu in (${chunk.map(() => "?").join(",")})`, chunk,
+        )) found.set(p.idu, p);
+      }
+    });
     return rows.map((r) => ({ ...r, ...(found.get(r.idu) ?? {}) }));
   } catch {
     return rows; // parcelle absente de la base embarquée : le CRM reste utilisable

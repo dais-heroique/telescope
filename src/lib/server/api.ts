@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { ZodType } from "zod";
 import { getUser, type User } from "./auth";
 import { isWriteBlocked } from "./db";
+import { ScopeTooWide } from "./shards";
 
 type Ctx<P> = { params: Promise<P> };
 
@@ -27,6 +28,7 @@ export function route<P extends Record<string, string> = Record<string, string>,
       return out instanceof Response ? out : NextResponse.json(out ?? { ok: true });
     } catch (e) {
       if (e instanceof Response) return e;
+      if (e instanceof ScopeTooWide) return NextResponse.json({ error: "zone trop large : zoomez ou dessinez une zone plus petite" }, { status: 400 });
       console.error(`[api] ${req.method} ${req.nextUrl.pathname}`, e instanceof Error ? e.message : e);
       if (isWriteBlocked(e)) return NextResponse.json({ error: "Écriture impossible : la base Turso a atteint son quota (écritures bloquées). Lecture seule en attendant." }, { status: 503 });
       return NextResponse.json({ error: "erreur serveur" }, { status: 500 });
