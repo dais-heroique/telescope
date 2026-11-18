@@ -55,7 +55,6 @@ export function CommandPalette() {
             <Command.Item className={item} onSelect={run(() => router.push("/crm"))}>CRM (pipeline, tâches, contacts)</Command.Item>
             <Command.Item className={item} onSelect={run(() => router.push("/courriers"))}>Courriers (modèles, historique)</Command.Item>
             <Command.Item className={item} onSelect={run(() => router.push("/etudes"))}>Études de zone</Command.Item>
-            <Command.Item className={item} onSelect={run(() => router.push("/equipe"))}>Équipe</Command.Item>
             {selected && <Command.Item className={item} onSelect={run(() => select(null))}>Fermer la fiche</Command.Item>}
           </Command.Group>
         </Command.List>

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC = ["/login", "/auth/verify", "/api/auth/login", "/api/auth/verify", "/api/auth/logout"];
+const PUBLIC = ["/login", "/api/auth/login", "/api/auth/logout"];
 
 /** Protège tout le site : session JWT signée (cookie). La révocation d'un utilisateur est vérifiée côté serveur (getUser). */
 export async function middleware(req: NextRequest) {

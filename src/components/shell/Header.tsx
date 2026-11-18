@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { BarChart3, Command, PanelLeft, KanbanSquare, LogOut, Mail, Moon, Sun, Users } from "lucide-react";
+import { BarChart3, Command, PanelLeft, KanbanSquare, LogOut, Mail, Moon, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -52,9 +52,6 @@ export function Header() {
         </Button>
         <Button asChild variant="ghost" size="icon" aria-label="CRM" title="CRM">
           <Link href="/crm"><KanbanSquare /></Link>
-        </Button>
-        <Button asChild variant="ghost" size="icon" aria-label="Équipe" title="Équipe">
-          <Link href="/equipe"><Users /></Link>
         </Button>
         <Button variant="ghost" size="icon" aria-label="Se déconnecter" onClick={logout}>
           <LogOut />

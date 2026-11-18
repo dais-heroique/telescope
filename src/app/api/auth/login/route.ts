@@ -1,37 +1,31 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { adminEmails } from "@/lib/env";
-import { createLoginLink, isAllowedEmail, normalizeEmail, sendLoginEmail } from "@/lib/server/auth";
+import { accessCodeOk, ACCESS_USER, cookieOptions, SESSION_COOKIE, signSession } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
 
-const body = z.object({ email: z.string().email().max(200), bootstrap: z.string().max(64).optional() });
+const body = z.object({ code: z.string().min(1).max(64) });
 
-/** Code d'amorçage du premier accès administrateur : 10 premiers caractères d'AUTH_SECRET (connu de l'hébergeur uniquement). */
-function bootstrapOk(code: string | undefined): boolean {
-  const secret = process.env.AUTH_SECRET;
-  if (!code || !secret || secret.length < 16) return false;
-  const a = Buffer.from(code);
-  const b = Buffer.from(secret.slice(0, 10));
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+// Limite les essais (par instance serveur) : 8 erreurs par 10 minutes et par adresse IP.
+const fails = new Map<string, { n: number; reset: number }>();
+const WINDOW = 10 * 60_000;
+const MAX_FAILS = 8;
 
-/** Réponse identique que l'email soit autorisé ou non (pas d'énumération des comptes). */
+/** Connexion par code d'accès unique (ACCESS_CODE, 7454 par défaut). */
 export async function POST(req: NextRequest) {
   const parsed = body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "email invalide" }, { status: 400 });
-  const email = normalizeEmail(parsed.data.email);
-  try {
-    if (await isAllowedEmail(email)) {
-      const link = await createLoginLink(email);
-      // Sans service d'email : le premier administrateur peut obtenir son lien avec le code d'amorçage
-      if (adminEmails().includes(email) && bootstrapOk(parsed.data.bootstrap)) return NextResponse.json({ ok: true, link });
-      const sent = await sendLoginEmail(email, link);
-      if (!sent) console.warn(`[auth] pas d'envoi d'email (RESEND_API_KEY absent ou refus) pour ${email} : lien à transmettre via la page Équipe`);
-    }
-  } catch (e) {
-    console.error("[auth] login", e instanceof Error ? e.message : e);
+  if (!parsed.success) return NextResponse.json({ error: "code requis" }, { status: 400 });
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "?";
+  const now = Date.now();
+  const f = fails.get(ip);
+  if (f && f.reset > now && f.n >= MAX_FAILS) return NextResponse.json({ error: "Trop d'essais, réessayez dans quelques minutes." }, { status: 429 });
+  if (!accessCodeOk(parsed.data.code.trim())) {
+    fails.set(ip, f && f.reset > now ? { n: f.n + 1, reset: f.reset } : { n: 1, reset: now + WINDOW });
+    await new Promise((r) => setTimeout(r, 500));
+    return NextResponse.json({ error: "Code incorrect" }, { status: 401 });
   }
-  return NextResponse.json({ ok: true });
+  fails.delete(ip);
+  const res = NextResponse.json({ ok: true });
+  res.cookies.set(SESSION_COOKIE, await signSession(ACCESS_USER), cookieOptions());
+  return res;
 }

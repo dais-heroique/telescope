@@ -12,8 +12,7 @@
     "e2e": "playwright test --trace off",
     "ingest": "tsx scripts/ingest/all.ts",
     "format": "prettier --write .",
-    "export": "tsx scripts/export/to-libsql.ts",
-    "login-link": "tsx scripts/auth/login-link.ts"
+    "export": "tsx scripts/export/to-libsql.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
