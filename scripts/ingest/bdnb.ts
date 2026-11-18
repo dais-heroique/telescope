@@ -13,7 +13,9 @@ function unzipStream(zip: string, entry: string): Readable {
 
 /** Dérive l'URL de l'export département depuis l'URL de l'export France lue sur data.gouv (le millésime change). */
 export function bdnbDepartmentUrl(franceUrl: string, dep: string): string {
-  return franceUrl.replace(/_france\//, `_dep${dep}/`).replace(/_france_csv\.tar\.gz$/, `_dep${dep}_csv.zip`);
+  // La BDNB nomme la Corse en minuscules (dep2a, dep2b)
+  const d = dep.toLowerCase();
+  return franceUrl.replace(/_france\//, `_dep${d}/`).replace(/_france_csv\.tar\.gz$/, `_dep${d}_csv.zip`);
 }
 
 export async function ingestBdnb(dep: string) {

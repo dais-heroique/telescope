@@ -30,7 +30,7 @@ export async function ingestRnic(dep: string) {
       select numero_immatriculation, ${dep}, coalesce(nullif(code_officiel_commune,''), commune), nullif(nom_usage_copropriete,''), nullif(adresse_reference,''),
              nullif(nombre_total_lots,'')::int, nullif(nombre_lots_habitation,'')::int, nullif(periode_construction,''), nullif(type_syndic,''),
              case when longitude <> '' and latitude <> '' then st_setsrid(st_makepoint(longitude::float8, latitude::float8), 4326) end
-      from stg_rnic where numero_immatriculation <> ''
+      from (select distinct on (numero_immatriculation) * from stg_rnic where numero_immatriculation <> '' order by numero_immatriculation) s
       on conflict (numero) do update set nb_lots = excluded.nb_lots, nb_lots_hab = excluded.nb_lots_hab, geom = excluded.geom, nom = excluded.nom`;
     for (const i of [1, 2, 3]) {
       await sql.unsafe(

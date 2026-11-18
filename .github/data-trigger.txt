@@ -1,3 +1,4 @@
-france !74
+2A 2B 62 69 76 77 88
 # Première ligne : départements à (re)construire, séparés par des espaces — ex. « 74 73 38 », « metropole » (01–95), « france » (+ DOM) ;
 # « !74 » exclut un département. Un push sur ce fichier lance le workflow « Construire les données ». Le reste du fichier est ignoré.
+# dernière demande : correctifs BDNB Corse (dep2a/dep2b) et doublons RNIC
