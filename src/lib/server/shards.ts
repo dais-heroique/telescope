@@ -29,7 +29,6 @@ export class ScopeTooWide extends Error {
 
 export const MAX_SHARDS = 6;
 const CACHE_DIR = path.join(os.tmpdir(), "vigie-shards");
-const CACHE_MAX_BYTES = 380e6;
 const MANIFEST_TTL = 10 * 60_000;
 const DEP_MARGIN = 0.25; // les emprises départementales sont dérivées des centres de communes
 
