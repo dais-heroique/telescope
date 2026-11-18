@@ -37,6 +37,15 @@ function popupContent(title: string, lines: string[]): HTMLElement {
   return root;
 }
 
+/** Types de zone du PLU (typezone) → libellé lisible. */
+function pluTypeName(t: string): string {
+  if (t === "U") return "Zone urbaine (U)";
+  if (t.startsWith("AU")) return `Zone à urbaniser (${t})`;
+  if (t.startsWith("A")) return `Zone agricole (${t})`;
+  if (t.startsWith("N")) return `Zone naturelle et forestière (${t})`;
+  return `Zone ${t}`;
+}
+
 const eur = (n: unknown) => (typeof n === "number" ? n.toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " €" : "—");
 
 export default function MapView() {
@@ -211,6 +220,30 @@ export default function MapView() {
       if (hoverId) map.setFeatureState(hoverSource(hoverId), { hover: false });
       hoverId = null;
     });
+    // Zonage PLU : la zone sous la souris est mise en surbrillance et une bulle indique de quoi il s'agit
+    let pluId: string | null = null;
+    const pluTip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 14, maxWidth: "280px" });
+    const pluState = (id: string) => ({ source: "v-plu", sourceLayer: "plu", id });
+    const clearPlu = () => {
+      if (pluId) map.setFeatureState(pluState(pluId), { hover: false });
+      pluId = null;
+      pluTip.remove();
+    };
+    map.on("mousemove", "plu-fill", (e) => {
+      if (useUi.getState().drawMode) return clearPlu();
+      const f = e.features?.[0];
+      if (!f) return clearPlu();
+      const id = String(f.id ?? f.properties?.id ?? "");
+      if (id !== pluId) {
+        if (pluId) map.setFeatureState(pluState(pluId), { hover: false });
+        pluId = id;
+        if (id) map.setFeatureState(pluState(id), { hover: true });
+      }
+      const p = f.properties;
+      const lines = [p.l ? String(p.l) : "", p.lg && p.lg !== p.l ? String(p.lg) : ""].filter(Boolean);
+      pluTip.setLngLat(e.lngLat).setDOMContent(popupContent(pluTypeName(String(p.t ?? "?")), lines)).addTo(map);
+    });
+    map.on("mouseleave", "plu-fill", clearPlu);
     for (const l of ["dvf-circles", "permis-circles", "copros-circles"]) {
       map.on("mouseenter", l, () => (map.getCanvas().style.cursor = "pointer"));
       map.on("mouseleave", l, () => (map.getCanvas().style.cursor = ""));

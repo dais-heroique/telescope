@@ -71,7 +71,7 @@ export function addVigieLayers(map: MlMap, filters: string) {
     const remote = REMOTE_SRC.includes(s);
     map.addSource(`v-${s}`, {
       type: "vector", tiles: [tileUrl(s, filters)], minzoom: 0, maxzoom: remote ? 16 : 17,
-      promoteId: s === "parcelles" ? { parcelles: "idu" } : undefined,
+      promoteId: s === "parcelles" ? { parcelles: "idu" } : s === "plu" ? { plu: "id" } : undefined,
       ...(remote ? { attribution: "Enedis (Licence Ouverte)" } : {}),
     });
   }
@@ -88,14 +88,23 @@ export function addVigieLayers(map: MlMap, filters: string) {
   map.addSource("sectors", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
   // ── Zonage PLU (sous les parcelles) ──
+  // Zonage PLU : remplissage + limites colorés selon le type (U / AU / A / N), mise en surbrillance au survol
+  const pluClass = (u: string, au: string, a: string, n: string): ExpressionSpecification => [
+    "case", ["==", ["get", "t"], "U"], u, ["==", ["slice", ["get", "t"], 0, 2], "AU"], au, ["==", ["slice", ["get", "t"], 0, 1], "A"], a, n,
+  ];
+  const hovered: ExpressionSpecification = ["boolean", ["feature-state", "hover"], false];
   map.addLayer({
     id: "plu-fill", type: "fill", source: "v-plu", "source-layer": "plu", minzoom: 12, layout: { visibility: "none" },
+    paint: { "fill-color": pluClass("#e63946", "#f4a261", "#8ab17d", "#2a9d8f"), "fill-opacity": ["case", hovered, 0.62, 0.38] },
+  });
+  map.addLayer({
+    id: "plu-line", type: "line", source: "v-plu", "source-layer": "plu", minzoom: 12, layout: { visibility: "none", "line-join": "round" },
     paint: {
-      "fill-color": ["case", ["==", ["get", "t"], "U"], "#e63946", ["in", ["slice", ["get", "t"], 0, 2], ["literal", ["AU"]]], "#f4a261", ["==", ["slice", ["get", "t"], 0, 1], "A"], "#8ab17d", "#2a9d8f"],
-      "fill-opacity": 0.38,
+      "line-color": pluClass("#9d0208", "#c2410c", "#3f6b2a", "#0f6b60"),
+      "line-opacity": 0.95,
+      "line-width": ["interpolate", ["linear"], ["zoom"], 12, ["case", hovered, 2.4, 0.9], 18, ["case", hovered, 5, 2.4]],
     },
   });
-  map.addLayer({ id: "plu-line", type: "line", source: "v-plu", "source-layer": "plu", minzoom: 12, layout: { visibility: "none" }, paint: { "line-color": "#0d1626", "line-opacity": 0.35, "line-width": 0.6 } });
   map.addLayer({
     id: "plu-label", type: "symbol", source: "v-plu", "source-layer": "plu", minzoom: 14, layout: { visibility: "none", "text-field": ["get", "l"], "text-size": 11, "text-font": ["Noto Sans Regular"] },
     paint: { "text-color": "#0d1626", "text-halo-color": "#fff", "text-halo-width": 1.2 },
@@ -196,8 +205,6 @@ const RESULT_OPACITY: [id: string, prop: string, base: number][] = [
   ["filter-hl-fill", "fill-opacity", 0.38],
   ["filter-hl-line", "line-opacity", 1],
   ["bati-fill", "fill-opacity", 0.7],
-  ["plu-fill", "fill-opacity", 0.38],
-  ["plu-line", "line-opacity", 0.35],
   ["dvf-circles", "circle-opacity", 0.9],
   ["dvf-circles", "circle-stroke-opacity", 1],
   ["permis-circles", "circle-opacity", 0.9],
@@ -215,6 +222,9 @@ const RESULT_OPACITY: [id: string, prop: string, base: number][] = [
 
 function applyResultOpacity(map: MlMap, k: number) {
   for (const [id, prop, base] of RESULT_OPACITY) if (map.getLayer(id)) map.setPaintProperty(id, prop, base * k);
+  const hov: ExpressionSpecification = ["boolean", ["feature-state", "hover"], false];
+  if (map.getLayer("plu-fill")) map.setPaintProperty("plu-fill", "fill-opacity", ["case", hov, 0.62 * k, 0.38 * k]);
+  if (map.getLayer("plu-line")) map.setPaintProperty("plu-line", "line-opacity", 0.95 * k);
   if (map.getLayer("score-heat")) map.setPaintProperty("score-heat", "heatmap-opacity", ["interpolate", ["linear"], ["zoom"], 14, 0.9 * k, 16, 0]);
 }
 

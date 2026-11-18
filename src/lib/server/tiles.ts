@@ -66,7 +66,11 @@ async function layerFeatures(layer: TileLayer, z: number, x: number, y: number, 
     }
     case "plu": {
       const idx = tileIndexSql("idx_plu_zones", z, x, y, [...LEVELS.plu_zones]);
-      const rows = await query<Props & { geom: Blob }>(`select p.gid as id, p.typezone as t, p.libelle as l, p.geom from plu_zones p where p.gid in (${idx.sql})`, idx.args);
+      // group by gid : une zone à cheval sur deux morceaux est stockée dans chacun, sans quoi elle serait dessinée deux fois (teinte plus foncée)
+      const rows = await query<Props & { geom: Blob }>(
+        `select p.gid as id, p.typezone as t, p.libelle as l, substr(p.libelong, 1, 160) as lg, p.geom from plu_zones p where p.gid in (${idx.sql}) group by p.gid`,
+        idx.args,
+      );
       return rows.map(({ geom, ...p }) => feat(decodeGeom(geom), p));
     }
     case "dvf": {

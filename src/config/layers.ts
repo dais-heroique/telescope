@@ -55,6 +55,7 @@ export const LAYERS: LayerDef[] = [
     label: "Zonage PLU (U/AU/A/N)",
     group: "urbanisme",
     status: "imported",
+    hint: "Visible à partir du zoom 12. Survolez une zone pour voir son type ; les limites ont la couleur de leur type.",
     legend: [
       { color: "#e63946", label: "U" },
       { color: "#f4a261", label: "AU" },
