@@ -9,7 +9,17 @@ import { circlePolygon, haversine } from "@/lib/parcelle/geo";
 import { encodeFilters } from "@/lib/filters";
 import { useUi } from "@/lib/store";
 
-const START: [number, number] = [6.1294, 45.8992]; // Annecy (département 74 par défaut)
+const START: [number, number] = [6.1294, 45.8992]; // Annecy : vue de départ à la toute première ouverture
+const VIEW_KEY = "vigie:view";
+
+/** Dernière vue de la carte (centre + zoom), restaurée à la réouverture quand l'adresse n'en porte pas. */
+function savedView(): { c: [number, number]; z: number } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "null") as { c?: [number, number]; z?: number } | null;
+    if (v && Array.isArray(v.c) && v.c.length === 2 && v.c.every(Number.isFinite) && Number.isFinite(v.z)) return { c: v.c, z: v.z! };
+  } catch { /* stockage indisponible */ }
+  return null;
+}
 
 /** Éléments DOM construits sans innerHTML : aucune donnée de tuile n'est interprétée comme du HTML. */
 function popupContent(title: string, lines: string[]): HTMLElement {
@@ -47,8 +57,8 @@ export default function MapView() {
     const map = new maplibregl.Map({
       container: container.current,
       style: baseStyle(),
-      center: START,
-      zoom: 13,
+      center: (!location.hash.includes("map=") && savedView()?.c) || START,
+      zoom: (!location.hash.includes("map=") && savedView()?.z) || 13,
       maxZoom: 20,
       minZoom: 4,
       attributionControl: { compact: true },
@@ -68,6 +78,10 @@ export default function MapView() {
       useUi.getState().setViewport({ bbox: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], zoom: map.getZoom() });
     };
     map.on("moveend", () => {
+      try {
+        const c = map.getCenter();
+        localStorage.setItem(VIEW_KEY, JSON.stringify({ c: [Number(c.lng.toFixed(5)), Number(c.lat.toFixed(5))], z: Number(map.getZoom().toFixed(2)) }));
+      } catch { /* stockage indisponible */ }
       clearTimeout(vpTimer);
       vpTimer = setTimeout(pushViewport, 350);
     });
