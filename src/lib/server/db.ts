@@ -1,26 +1,17 @@
 import { normalizeLibsqlUrl } from "@/lib/libsql-url";
 import { scopedClient } from "./shards";
 import { createClient, type Client, type InValue } from "@libsql/client";
-import { createReadStream, createWriteStream } from "node:fs";
-import { readFile, rename, stat } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import { createGunzip } from "node:zlib";
 
 declare global {
   var __vigieApp: Client | undefined;
-  var __vigieData: Promise<Client> | undefined;
   var __vigieSchema: Promise<void> | undefined;
 }
 
 /**
  * Deux bases :
  *  - « application » (utilisateurs, CRM, courriers, cache) : libSQL/Turso en production, fichier SQLite en local. Peu d'écritures.
- *  - « données » (parcelles, ventes, DPE…) : lecture seule. En production, base allégée embarquée dans le déploiement
- *    (data/lite/*.gz, décompressée dans /tmp au démarrage à froid) → aucune écriture ni lecture Turso, aucun quota.
- *    En local, la base complète .data/vigie.db. VIGIE_DATA=turso force la lecture des données dans Turso.
+ *  - « données » (parcelles, ventes, DPE…) : lecture seule, par morceaux téléchargés à la demande depuis les releases GitHub
+ *    (shards.ts) → aucune écriture ni lecture Turso, aucun quota. En local sans DATA_SHARDS_DIR : la base complète .data/vigie.db.
  */
 export function db(): Client {
   globalThis.__vigieApp ??= createClient({
@@ -30,42 +21,12 @@ export function db(): Client {
   return globalThis.__vigieApp;
 }
 
-const LITE_DIR = path.join(process.cwd(), "data", "lite");
-
-/** Base allégée embarquée : assemblée une fois par instance dans /tmp, puis ouverte en fichier. */
-async function openBundled(): Promise<Client | null> {
-  let manifest: { bytes: number; parts: string[]; builtAt: string };
-  try {
-    manifest = JSON.parse(await readFile(path.join(LITE_DIR, "manifest.json"), "utf8"));
-  } catch {
-    return null;
-  }
-  const target = path.join(os.tmpdir(), `vigie-lite-${manifest.builtAt.replace(/\W/g, "")}.db`);
-  const ok = await stat(target).then((s) => s.size === manifest.bytes).catch(() => false);
-  if (!ok) {
-    const tmp = `${target}.${process.pid}.part`;
-    const t0 = Date.now();
-    const parts = Readable.from((async function* () { for (const f of manifest.parts) yield* createReadStream(path.join(LITE_DIR, f)); })());
-    await pipeline(parts, createGunzip(), createWriteStream(tmp));
-    await rename(tmp, target);
-    console.log(`[db] base allégée prête (${Math.round(manifest.bytes / 1e6)} Mo) en ${Date.now() - t0} ms`);
-  }
-  return createClient({ url: `file:${target}` });
-}
-
-export function dataDb(): Promise<Client> {
-  globalThis.__vigieData ??= (async () => {
-    const wantBundle = process.env.VIGIE_DATA === "bundle" || (process.env.NODE_ENV === "production" && process.env.VIGIE_DATA !== "turso");
-    if (wantBundle) {
-      const c = await openBundled();
-      if (c) return c;
-    }
-    return db();
-  })().catch((e) => {
-    globalThis.__vigieData = undefined;
-    throw e;
-  });
-  return globalThis.__vigieData;
+/**
+ * Base de données « données » hors portée de morceaux (withData) : base locale en développement, Turso en repli.
+ * En production les données sont lues par morceaux depuis les releases GitHub (voir shards.ts).
+ */
+export async function dataDb(): Promise<Client> {
+  return db();
 }
 
 export type Row = Record<string, unknown>;

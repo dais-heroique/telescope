@@ -8,8 +8,6 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   // Les fichiers de base locale ne doivent jamais partir dans le bundle serverless
   outputFileTracingExcludes: { "*": [".data/**", "scripts/**", "e2e/**", "data/demo.db"] },
-  // Base de données allégée (morceaux gzip) lue au démarrage à froid : à embarquer dans chaque fonction serveur
-  outputFileTracingIncludes: { "/**": ["./data/lite/**"] },
 };
 
 export default nextConfig;
