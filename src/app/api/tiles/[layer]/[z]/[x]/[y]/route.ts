@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { parseFilters } from "@/lib/filters";
 import { ScopeBusy, ScopeTooWide, tileBBox, withData } from "@/lib/server/shards";
-import { MIN_ZOOM, renderTile, TILE_LAYERS, type TileLayer } from "@/lib/server/tiles";
+import { isExternalLayer, MIN_ZOOM, renderTile, TILE_LAYERS, type TileLayer } from "@/lib/server/tiles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +26,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ layer: stri
     return NextResponse.json({ error: "filtres invalides" }, { status: 400 });
   }
   try {
-    const mvt = await withData({ bbox: tileBBox(zi, xi, yi) }, () => renderTile(layer as TileLayer, zi, xi, yi, filters));
+    const mvt = isExternalLayer(layer)
+      ? await renderTile(layer as TileLayer, zi, xi, yi, filters)
+      : await withData({ bbox: tileBBox(zi, xi, yi) }, () => renderTile(layer as TileLayer, zi, xi, yi, filters));
     if (!mvt || mvt.length === 0) return new NextResponse(null, { status: 204, headers });
     return new Response(new Uint8Array(mvt), { headers });
   } catch (e) {

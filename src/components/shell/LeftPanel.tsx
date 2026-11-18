@@ -148,6 +148,7 @@ function LayerRow({ layer, on, onToggle, children }: { layer: LayerDef; on: bool
           <Legend entries={layer.legend} />
         </div>
       )}
+      {on && !disabled && layer.hint && <p className="ml-2 mt-1 text-[11px] leading-snug text-muted-foreground">{layer.hint}</p>}
       {children}
     </li>
   );

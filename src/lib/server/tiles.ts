@@ -5,12 +5,20 @@ import { decodeGeom } from "@/lib/geo/codec";
 import { pointTileRange, tileIndexSql } from "@/lib/geo/tile-index";
 import { LEVELS, POINT_LEVEL } from "./data-schema";
 import { query } from "./db";
+import { enedisFeatures, isRemoteLayer } from "./reseau";
 
-export const TILE_LAYERS = ["parcelles", "bati", "dvf", "plu", "permis", "copros", "pts"] as const;
+export const TILE_LAYERS = ["parcelles", "bati", "dvf", "plu", "permis", "copros", "pts", "hta-aerien", "hta-souterrain", "bt-aerien", "bt-souterrain", "postes-htabt"] as const;
 export type TileLayer = (typeof TILE_LAYERS)[number];
 
 /** Zoom minimal servi par couche (au-dessous : tuile vide, pour protéger la base). */
-export const MIN_ZOOM: Record<TileLayer, number> = { parcelles: 14, bati: 15, dvf: 12, plu: 12, permis: 13, copros: 12, pts: 11 };
+export const MIN_ZOOM: Record<TileLayer, number> = {
+  parcelles: 14, bati: 15, dvf: 12, plu: 12, permis: 13, copros: 12, pts: 11,
+  // réseau électrique Enedis (lu à la demande, tuiles denses) : zooms élevés seulement
+  "hta-aerien": 15, "hta-souterrain": 15, "bt-aerien": 16, "bt-souterrain": 16, "postes-htabt": 15,
+};
+
+/** Couches lues sur des API externes (aucune donnée importée nécessaire). */
+export const isExternalLayer = (l: string) => isRemoteLayer(l);
 
 // geojson-vt v4 : export par défaut = classe (les typings embarqués ne la déclarent pas comme constructible).
 const GeoJSONVT = geojsonvtModule as unknown as new (data: GeoJSON.FeatureCollection, options: Record<string, number>) => { getTile(z: number, x: number, y: number): unknown };
@@ -33,6 +41,7 @@ function linked(filters: Filters, link: string, key: string): { text: string; pa
 
 /** Lignes SQL d'une couche → FeatureCollection GeoJSON. */
 async function layerFeatures(layer: TileLayer, z: number, x: number, y: number, filters: Filters): Promise<GeoJSON.Feature[]> {
+  if (isRemoteLayer(layer)) return enedisFeatures(layer, z, x, y);
   switch (layer) {
     case "parcelles": {
       const idx = tileIndexSql("idx_parcelles", z, x, y, [...LEVELS.parcelles], { table: "parcelles", idCol: "idu", xCol: "t16x", yCol: "t16y" });

@@ -12,11 +12,30 @@ export interface MapUiState {
   resultOpacity: number;
 }
 
-const SOURCES = ["parcelles", "bati", "dvf", "plu", "permis", "copros", "pts"] as const;
+const SOURCES = ["parcelles", "bati", "dvf", "plu", "permis", "copros", "pts", "hta-aerien", "hta-souterrain", "bt-aerien", "bt-souterrain", "postes-htabt"] as const;
 type Src = (typeof SOURCES)[number];
 
 /** Sources filtrées par la sélection de l'utilisateur (les autres ne dépendent pas des filtres). */
 const FILTERED: Src[] = ["parcelles", "pts", "dvf", "permis", "copros"];
+
+/** Couches lues à la demande sur le réseau Enedis (tuiles de 16 au plus). */
+const REMOTE_SRC: Src[] = ["hta-aerien", "hta-souterrain", "bt-aerien", "bt-souterrain", "postes-htabt"];
+
+/** Couches raster WMTS de la Géoplateforme IGN (zones protégées / humides, postes sources) : un calque de l'interface = un ou plusieurs rasters. */
+interface RasterDef { id: string; layer: string; tms: string; style: string; min: number; max: number; group: "postes-sources" | "zones-protegees" | "zones-humides"; opacity: number }
+const PATRINAT = (id: string, layer: string, group: RasterDef["group"], opacity = 0.55): RasterDef => ({ id: `r-${id}`, layer, tms: "PM_6_16", style: "normal", min: 6, max: 16, group, opacity });
+const RASTERS: RasterDef[] = [
+  { id: "r-postes-sources", layer: "CAPACITE.ACCUEIL.ELECTRIQUE", tms: "PM_6_16", style: "CAPACITE.ACCUEIL.ELECTRIQUE", min: 6, max: 16, group: "postes-sources", opacity: 0.9 },
+  PATRINAT("sic", "Patrinat_SIC", "zones-protegees"), PATRINAT("zps", "Patrinat_ZPS", "zones-protegees"),
+  PATRINAT("znieff2", "Patrinat_ZNIEFF2", "zones-protegees", 0.45), PATRINAT("znieff1", "Patrinat_ZNIEFF1", "zones-protegees"),
+  PATRINAT("pn", "Patrinat_PN", "zones-protegees"), PATRINAT("pnr", "Patrinat_PNR", "zones-protegees", 0.4),
+  PATRINAT("rnn", "Patrinat_RNN", "zones-protegees", 0.7), PATRINAT("rnr", "Patrinat_RNR", "zones-protegees", 0.7), PATRINAT("apb", "Patrinat_APB", "zones-protegees", 0.7),
+  { id: "r-clc-waw", layer: "LANDCOVER.HR.WAW.CLC15", tms: "PM_0_13", style: "CORINE Land Cover - HR - zones humides et surfaces en eaux permanentes", min: 5, max: 13, group: "zones-humides", opacity: 0.7 },
+  PATRINAT("bcae", "TOURBIERES_ZONES-HUMIDES.BCAE", "zones-humides", 0.7), PATRINAT("ramsar", "Patrinat_RAMSAR", "zones-humides", 0.7),
+];
+
+const wmtsUrl = (r: RasterDef) =>
+  `https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${encodeURIComponent(r.layer)}&STYLE=${encodeURIComponent(r.style)}&FORMAT=image/png&TILEMATRIXSET=${r.tms}&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`;
 
 function tileUrl(layer: Src, f: string) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
@@ -49,7 +68,18 @@ const neutralFill: ExpressionSpecification = ["literal", "rgba(0,0,0,0)"] as unk
 export function addVigieLayers(map: MlMap, filters: string) {
   // ── Sources PostGIS (tuiles MVT) ──
   for (const s of SOURCES) {
-    map.addSource(`v-${s}`, { type: "vector", tiles: [tileUrl(s, filters)], minzoom: 0, maxzoom: 17, promoteId: s === "parcelles" ? { parcelles: "idu" } : undefined });
+    const remote = REMOTE_SRC.includes(s);
+    map.addSource(`v-${s}`, {
+      type: "vector", tiles: [tileUrl(s, filters)], minzoom: 0, maxzoom: remote ? 16 : 17,
+      promoteId: s === "parcelles" ? { parcelles: "idu" } : undefined,
+      ...(remote ? { attribution: "Enedis (Licence Ouverte)" } : {}),
+    });
+  }
+
+  // ── Rasters IGN (sous toutes les couches de données) ──
+  for (const r of RASTERS) {
+    map.addSource(r.id, { type: "raster", tiles: [wmtsUrl(r)], tileSize: 256, minzoom: r.min, maxzoom: r.max, attribution: "IGN · INPN · Copernicus" });
+    map.addLayer({ id: r.id, type: "raster", source: r.id, layout: { visibility: "none" }, paint: { "raster-opacity": r.opacity } });
   }
 
   // ── Zone de sélection dessinée + brouillon de dessin ──
@@ -138,6 +168,18 @@ export function addVigieLayers(map: MlMap, filters: string) {
   circle("dvf-circles", "dvf", prixColor(), 12, 4);
   circle("permis-circles", "permis", "#06d6a0", 13, 4);
   circle("copros-circles", "copros", "#3a86ff", 12, 5);
+
+  // ── Réseau électrique (Enedis) : lignes aériennes pleines, souterraines pointillées, postes en points ──
+  const line = (id: string, src: Src, color: string, minzoom: number, w0: number, w1: number, dash?: number[]) =>
+    map.addLayer({
+      id, type: "line", source: `v-${src}`, "source-layer": src, minzoom, layout: { visibility: "none", "line-cap": "round" },
+      paint: { "line-color": color, "line-width": ["interpolate", ["linear"], ["zoom"], minzoom, w0, 19, w1], ...(dash ? { "line-dasharray": dash } : {}) },
+    });
+  line("hta-aerien-line", "hta-aerien", "#dc2626", 15, 1.4, 3.2);
+  line("hta-souterrain-line", "hta-souterrain", "#2563eb", 15, 1.4, 3.2, [3, 2]);
+  line("bt-aerien-line", "bt-aerien", "#f59e0b", 16, 1, 2.4);
+  line("bt-souterrain-line", "bt-souterrain", "#0ea5e9", 16, 1, 2.4, [2, 2]);
+  circle("postes-htabt-circles", "postes-htabt", "#0f766e", 15, 4);
 }
 
 /** Recharge les tuiles des sources filtrées quand les filtres changent. */
@@ -162,6 +204,13 @@ const RESULT_OPACITY: [id: string, prop: string, base: number][] = [
   ["permis-circles", "circle-stroke-opacity", 1],
   ["copros-circles", "circle-opacity", 0.9],
   ["copros-circles", "circle-stroke-opacity", 1],
+  ["postes-htabt-circles", "circle-opacity", 0.9],
+  ["postes-htabt-circles", "circle-stroke-opacity", 1],
+  ["hta-aerien-line", "line-opacity", 1],
+  ["hta-souterrain-line", "line-opacity", 1],
+  ["bt-aerien-line", "line-opacity", 1],
+  ["bt-souterrain-line", "line-opacity", 1],
+  ...RASTERS.map((r): [string, string, number] => [r.id, "raster-opacity", r.opacity]),
 ];
 
 function applyResultOpacity(map: MlMap, k: number) {
@@ -199,6 +248,14 @@ export function syncVigieLayers(map: MlMap, st: MapUiState) {
   vis("permis-circles", on("permis"));
   vis("copros-circles", on("copros"));
   vis("score-heat", on("score"));
+
+  // Réseau électrique, zones protégées / humides
+  vis("postes-htabt-circles", on("postes-htabt"));
+  vis("hta-aerien-line", on("reseau-aerien"));
+  vis("bt-aerien-line", on("reseau-aerien"));
+  vis("hta-souterrain-line", on("reseau-souterrain"));
+  vis("bt-souterrain-line", on("reseau-souterrain"));
+  for (const r of RASTERS) vis(r.id, on(r.group));
 
   // Couleur de remplissage des parcelles (mode exclusif)
   const fill = on("dpe") ? dpeFill : on("score") ? scoreFill : on("personnes-morales") ? pmFill : neutralFill;

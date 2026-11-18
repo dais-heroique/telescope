@@ -1,10 +1,12 @@
 export interface LayerDef {
   id: string;
   label: string;
-  group: "cadastre" | "marche" | "energie" | "urbanisme" | "proprietaires" | "risques" | "prediction";
+  group: "cadastre" | "marche" | "energie" | "reseaux" | "urbanisme" | "proprietaires" | "risques" | "environnement" | "prediction";
   /** "live" = disponible partout (API publique), "imported" = départements importés, "planned" = pas encore implémenté. */
   status: "live" | "imported" | "planned";
   legend?: { color: string; label: string }[];
+  /** Précision affichée sous le calque quand il est actif (zoom minimal, source…). */
+  hint?: string;
 }
 
 export const DPE_COLORS = { A: "#319834", B: "#33cc31", C: "#cbfc34", D: "#fbfe06", E: "#fbcc05", F: "#fc9935", G: "#fc0205" } as const;
@@ -72,7 +74,34 @@ export const LAYERS: LayerDef[] = [
       { color: "#98a2b3", label: "public / HLM" },
     ],
   },
+  {
+    id: "postes-sources", label: "Postes sources électriques", group: "reseaux", status: "live",
+    hint: "Postes du réseau public et capacité d'accueil S3REnR (MW), France métropolitaine hors Corse. Source : RTE / Enedis via IGN.",
+  },
+  {
+    id: "postes-htabt", label: "Postes HTA/BT", group: "reseaux", status: "live",
+    legend: [{ color: "#0f766e", label: "poste de distribution" }],
+    hint: "Visible à partir du zoom 15. Source : Enedis (Licence Ouverte).",
+  },
+  {
+    id: "reseau-aerien", label: "Réseau électrique aérien", group: "reseaux", status: "live",
+    legend: [{ color: "#dc2626", label: "HTA" }, { color: "#f59e0b", label: "BT" }],
+    hint: "HTA dès le zoom 15, BT dès le zoom 16. Source : Enedis (Licence Ouverte).",
+  },
+  {
+    id: "reseau-souterrain", label: "Réseau électrique souterrain", group: "reseaux", status: "live",
+    legend: [{ color: "#2563eb", label: "HTA" }, { color: "#0ea5e9", label: "BT" }],
+    hint: "HTA dès le zoom 15, BT dès le zoom 16 (traits pointillés). Source : Enedis (Licence Ouverte).",
+  },
   { id: "risques", label: "Risques (Géorisques)", group: "risques", status: "planned" },
+  {
+    id: "zones-protegees", label: "Zones protégées", group: "environnement", status: "live",
+    hint: "Natura 2000 (habitats, oiseaux), ZNIEFF 1 et 2, parcs nationaux et régionaux, réserves naturelles, arrêtés de biotope. Source : INPN / IGN.",
+  },
+  {
+    id: "zones-humides", label: "Zones humides", group: "environnement", status: "live",
+    hint: "Zones humides et eaux permanentes (Copernicus / CORINE), tourbières (BCAE), sites Ramsar. Source : IGN / INPN.",
+  },
   { id: "score", label: "Probabilité de vente", group: "prediction", status: "imported", legend: SCORE_RAMP },
 ];
 
@@ -80,8 +109,10 @@ export const LAYER_GROUPS: Record<LayerDef["group"], string> = {
   cadastre: "Cadastre",
   marche: "Marché",
   energie: "Énergie",
+  reseaux: "Réseaux électriques",
   urbanisme: "Urbanisme",
   proprietaires: "Propriétaires",
   risques: "Risques",
+  environnement: "Environnement",
   prediction: "Prédiction",
 };
