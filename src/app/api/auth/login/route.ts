@@ -11,7 +11,7 @@ const fails = new Map<string, { n: number; reset: number }>();
 const WINDOW = 10 * 60_000;
 const MAX_FAILS = 8;
 
-/** Connexion par code d'accès unique (ACCESS_CODE, 7454 par défaut). */
+/** Connexion par code d'accès unique (variable d'environnement ACCESS_CODE). */
 export async function POST(req: NextRequest) {
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "code requis" }, { status: 400 });

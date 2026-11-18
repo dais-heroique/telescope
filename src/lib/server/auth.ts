@@ -3,8 +3,8 @@ import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 
 /**
- * Accès par code unique (ACCESS_CODE, « 7454 » par défaut) : une fois le code saisi, un cookie de session signé (JWT, 60 jours)
- * est posé. Aucun compte, aucune base : l'identité est partagée (ACCESS_USER).
+ * Accès par code unique (variable d'environnement ACCESS_CODE, jamais écrite dans le dépôt) : une fois le code saisi, un cookie de
+ * session signé (JWT, 60 jours) est posé. Aucun compte, aucune base : l'identité est partagée (ACCESS_USER).
  */
 export const SESSION_COOKIE = "vigie_session";
 export const ACCESS_USER = "acces@vigie";
@@ -29,7 +29,8 @@ const digest = (s: string) => createHash("sha256").update(s).digest();
 
 /** Comparaison à temps constant du code saisi avec le code d'accès. */
 export function accessCodeOk(code: string): boolean {
-  const expected = (process.env.ACCESS_CODE || "7454").trim();
+  const expected = (process.env.ACCESS_CODE ?? "").trim();
+  if (!expected) return false; // sans ACCESS_CODE configuré, personne ne peut se connecter
   return timingSafeEqual(digest(code), digest(expected));
 }
 
