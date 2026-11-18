@@ -61,8 +61,29 @@ function usePersistedFilters() {
   }, []);
 }
 
+/** L'opacité des résultats est retenue d'une visite à l'autre. */
+function usePersistedOpacity() {
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem("vigie:opacity"));
+      if (Number.isFinite(v) && v >= 0.1 && v <= 1) useUi.getState().setResultOpacity(v);
+    } catch {
+      /* stockage indisponible */
+    }
+    return useUi.subscribe((s, prev) => {
+      if (s.resultOpacity === prev.resultOpacity) return;
+      try {
+        localStorage.setItem("vigie:opacity", String(s.resultOpacity));
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
+}
+
 export function MapWorkspace() {
   usePersistedFilters();
+  usePersistedOpacity();
   useDeepLink();
   useSectorsSync();
   const leftOpen = useUi((s) => s.leftOpen);

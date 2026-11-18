@@ -18,7 +18,7 @@ const BASEMAPS: { id: Basemap; label: string; icon: typeof MapIcon }[] = [
 ];
 
 export function LeftPanel() {
-  const { module, basemap, setBasemap, layers, toggleLayer, dvfColor, setDvfColor, leftTab, setLeftTab, filters, zone } = useUi();
+  const { module, basemap, setBasemap, layers, toggleLayer, dvfColor, setDvfColor, leftTab, setLeftTab, filters, zone, resultOpacity, setResultOpacity } = useUi();
   const nFilters = Object.keys(filters).length;
   const groups = Object.entries(LAYER_GROUPS).map(([g, label]) => ({
     g,
@@ -59,6 +59,19 @@ export function LeftPanel() {
             </button>
           ))}
         </div>
+      </section>
+
+      <section>
+        <div className="mb-1 flex items-center justify-between">
+          <label htmlFor="result-opacity" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Opacité des résultats</label>
+          <span className="text-xs tabular-nums text-muted-foreground">{Math.round(resultOpacity * 100)} %</span>
+        </div>
+        <input
+          id="result-opacity" type="range" min={10} max={100} step={5} value={Math.round(resultOpacity * 100)}
+          onChange={(e) => setResultOpacity(Number(e.target.value) / 100)}
+          className="w-full accent-[var(--beacon)]" aria-label="Opacité des résultats sur la carte" data-testid="result-opacity"
+        />
+        <p className="mt-0.5 text-[11px] text-muted-foreground">Rend les couleurs, points et surlignages plus ou moins transparents (utile pour une capture d&apos;écran).</p>
       </section>
 
       <section className="space-y-3">

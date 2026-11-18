@@ -9,6 +9,7 @@ export interface MapUiState {
   selected: { idu: string } | null;
   dvfColor: DvfColor;
   filters: Record<string, unknown>;
+  resultOpacity: number;
 }
 
 const SOURCES = ["parcelles", "bati", "dvf", "plu", "permis", "copros", "pts"] as const;
@@ -147,6 +148,27 @@ export function setVigieTiles(map: MlMap, filters: string) {
   }
 }
 
+/** Opacité de base des couches de résultats ; le curseur « Opacité des résultats » les multiplie. */
+const RESULT_OPACITY: [id: string, prop: string, base: number][] = [
+  ["vparcelles-fill", "fill-opacity", 0.6],
+  ["filter-hl-fill", "fill-opacity", 0.38],
+  ["filter-hl-line", "line-opacity", 1],
+  ["bati-fill", "fill-opacity", 0.7],
+  ["plu-fill", "fill-opacity", 0.38],
+  ["plu-line", "line-opacity", 0.35],
+  ["dvf-circles", "circle-opacity", 0.9],
+  ["dvf-circles", "circle-stroke-opacity", 1],
+  ["permis-circles", "circle-opacity", 0.9],
+  ["permis-circles", "circle-stroke-opacity", 1],
+  ["copros-circles", "circle-opacity", 0.9],
+  ["copros-circles", "circle-stroke-opacity", 1],
+];
+
+function applyResultOpacity(map: MlMap, k: number) {
+  for (const [id, prop, base] of RESULT_OPACITY) if (map.getLayer(id)) map.setPaintProperty(id, prop, base * k);
+  if (map.getLayer("score-heat")) map.setPaintProperty("score-heat", "heatmap-opacity", ["interpolate", ["linear"], ["zoom"], 14, 0.9 * k, 16, 0]);
+}
+
 export function syncVigieLayers(map: MlMap, st: MapUiState) {
   const vis = (id: string, on: boolean) => map.getLayer(id) && map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
   const on = (id: string) => Boolean(st.layers[id]);
@@ -185,6 +207,8 @@ export function syncVigieLayers(map: MlMap, st: MapUiState) {
     vis("vparcelles-fill", on("dpe") || on("score") || on("personnes-morales"));
   }
   if (map.getLayer("dvf-circles")) map.setPaintProperty("dvf-circles", "circle-color", st.dvfColor === "prix" ? prixColor() : ancienneteColor());
+
+  applyResultOpacity(map, st.resultOpacity ?? 1);
 
   // Parcelle sélectionnée
   if (map.getLayer("parcelle-selected")) map.setFilter("parcelle-selected", ["==", ["get", "idu"], st.selected?.idu ?? ""]);

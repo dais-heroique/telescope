@@ -48,6 +48,9 @@ interface UiState {
   selected: SelectedParcel | null;
   flyTo: FlyTarget | null;
   paletteOpen: boolean;
+  /** Opacité des couches de résultats (0.1–1) : utile pour les captures d'écran. */
+  resultOpacity: number;
+  setResultOpacity: (o: number) => void;
   setModule: (m: ModuleId) => void;
   setFilters: (f: Filters) => void;
   setDvfColor: (c: DvfColor) => void;
@@ -87,6 +90,8 @@ export const useUi = create<UiState>((set) => ({
   selected: null,
   flyTo: null,
   paletteOpen: false,
+  resultOpacity: 1,
+  setResultOpacity: (o) => set({ resultOpacity: Math.min(1, Math.max(0.1, o)) }),
   setModule: (module) => set({ module, layers: layersFor(module) }),
   setFilters: (filters) => set({ filters }),
   setDvfColor: (dvfColor) => set({ dvfColor }),
