@@ -1,0 +1,24 @@
+name: Diagnostic releases
+on:
+  push:
+    paths: [".github/debug-trigger.txt"]
+permissions:
+  contents: write
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dépôt
+        run: gh api repos/${{ github.repository }} --jq '{private, visibility, default_branch, permissions}' || true
+      - name: Création d'une release (réponse complète)
+        run: |
+          gh api -i -X POST repos/${{ github.repository }}/releases -f tag_name=debug-probe -f target_commitish=${{ github.sha }} -f name="probe" -F draft=true || true
+      - name: Création avec gh release create
+        run: gh release create debug-probe2 --title probe --notes probe --target ${{ github.sha }} --draft 2>&1 || true
+      - name: Rulesets / protection des étiquettes
+        run: |
+          gh api repos/${{ github.repository }}/rulesets 2>&1 | head -30 || true
+          gh api repos/${{ github.repository }}/actions/permissions 2>&1 | head -20 || true
