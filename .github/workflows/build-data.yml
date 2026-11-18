@@ -85,7 +85,9 @@ jobs:
       - name: Schéma PostGIS d'ingestion
         run: PGPASSWORD=postgres psql -h localhost -U postgres -d vigie -v ON_ERROR_STOP=1 -f scripts/ingest/schema.sql
       - name: Ingestion du département
-        run: npx tsx scripts/ingest/all.ts --dep="$DEP"
+        # Une source indisponible pour un département (ex. DVF en Alsace-Moselle) ne doit pas bloquer les autres :
+        # on continue avec ce qui a pu être chargé (cadastre + features obligatoires : l'export échoue sinon).
+        run: npx tsx scripts/ingest/all.ts --dep="$DEP" || echo "::warning::ingestion partielle pour $DEP (voir les erreurs ci-dessus)"
       - name: Export vers un fichier SQLite local
         run: |
           mkdir -p /tmp/work
