@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getBase } from "@/lib/server/parcelle/base";
-import { withData } from "@/lib/server/shards";
+import { ScopeBusy, withData } from "@/lib/server/shards";
 import { getBati } from "@/lib/server/parcelle/bati";
 import { getEnergie } from "@/lib/server/parcelle/energie";
 import { getEntreprise } from "@/lib/server/parcelle/entreprise";
@@ -51,6 +51,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ idu: string
     return NextResponse.json(data, { headers: { "Cache-Control": "private, max-age=120" } });
     });
   } catch (e) {
+    if (e instanceof ScopeBusy) return NextResponse.json({ error: "Données momentanément saturées, réessayez dans un instant." }, { status: 503, headers: { "Retry-After": "2" } });
     console.error("parcelle", section, idu, e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "erreur serveur" }, { status: 500 });
   }

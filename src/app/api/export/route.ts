@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { ScopeBusy } from "@/lib/server/shards";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { BOOL_KEYS } from "@/lib/export-columns";
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
     const buf = await wb.xlsx.writeBuffer();
     return new Response(new Uint8Array(buf as ArrayBuffer), { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="${name}.xlsx"`, "X-Rows": String(res.rows.length) } });
   } catch (e) {
+    if (e instanceof ScopeBusy) return NextResponse.json({ error: "Données momentanément saturées, réessayez dans un instant." }, { status: 503, headers: { "Retry-After": "2" } });
     console.error("export", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "erreur serveur" }, { status: 500 });
   }

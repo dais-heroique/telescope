@@ -1,3 +1,4 @@
+import { ScopeBusy } from "@/lib/server/shards";
 import { NextResponse, type NextRequest } from "next/server";
 import { searchParcels, searchSchema } from "@/lib/server/search";
 
@@ -11,6 +12,7 @@ export async function POST(req: NextRequest) {
     const res = await searchParcels(parsed.data);
     return NextResponse.json({ ...res, rows: res.rows.slice(parsed.data.offset, parsed.data.offset + parsed.data.limit), offset: parsed.data.offset });
   } catch (e) {
+    if (e instanceof ScopeBusy) return NextResponse.json({ error: "Données momentanément saturées, réessayez dans un instant." }, { status: 503, headers: { "Retry-After": "2" } });
     console.error("search", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "erreur serveur" }, { status: 500 });
   }

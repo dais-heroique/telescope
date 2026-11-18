@@ -27,7 +27,7 @@ export class ScopeTooWide extends Error {
   constructor() { super("zone trop large"); }
 }
 
-export const MAX_SHARDS = 8;
+export const MAX_SHARDS = 6;
 const CACHE_DIR = path.join(os.tmpdir(), "vigie-shards");
 const CACHE_MAX_BYTES = 380e6;
 const MANIFEST_TTL = 10 * 60_000;
@@ -102,24 +102,74 @@ export async function pickShards(spec: ScopeSpec): Promise<{ manifest: Manifest;
 }
 
 /* ───────── téléchargement + décompression dans /tmp ───────── */
-const inflight = new Map<string, Promise<string>>();
-const inUse = new Set<string>();
+/** Espace temporaire momentanément saturé par d'autres requêtes : réessayer. */
+export class ScopeBusy extends Error {
+  constructor() { super("données momentanément saturées"); }
+}
 
-function evict(keep: string[]) {
+const BUDGET = Number(process.env.SHARDS_BUDGET_MB ?? 400) * 1e6; // /tmp fait 512 Mo sur Vercel
+const inflight = new Map<string, Promise<string>>();
+const pins = new Map<string, number>(); // morceaux utilisés par des requêtes en cours : jamais supprimés
+let reserved = 0; // octets des téléchargements en cours
+let waiters: (() => void)[] = [];
+
+const shardPath = (m: Manifest, s: ShardInfo) => path.join(CACHE_DIR, `${m.dep}-${s.id}-${m.builtAt.replace(/\W/g, "")}.db`);
+
+function pin(files: string[]) {
+  for (const f of files) pins.set(f, (pins.get(f) ?? 0) + 1);
+}
+function unpin(files: string[]) {
+  for (const f of files) {
+    const n = (pins.get(f) ?? 1) - 1;
+    if (n <= 0) pins.delete(f);
+    else pins.set(f, n);
+  }
+  const w = waiters;
+  waiters = [];
+  w.forEach((r) => r());
+}
+
+function listCache() {
   try {
-    const files = readdirSync(CACHE_DIR).filter((f) => f.endsWith(".db")).map((f) => ({ f: path.join(CACHE_DIR, f), s: statSync(path.join(CACHE_DIR, f)) }));
-    let total = files.reduce((t, x) => t + x.s.size, 0);
-    for (const x of files.sort((a, b) => a.s.atimeMs - b.s.atimeMs)) {
-      if (total <= CACHE_MAX_BYTES) break;
-      if (keep.includes(x.f) || inUse.has(x.f)) continue;
-      rmSync(x.f, { force: true });
-      total -= x.s.size;
+    return readdirSync(CACHE_DIR).map((f) => {
+      const p = path.join(CACHE_DIR, f);
+      const st = statSync(p);
+      return { p, size: st.size, at: st.atimeMs, mt: st.mtimeMs };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Libère de la place (morceaux les moins récemment utilisés, hors requêtes en cours) puis réserve `need` octets. */
+async function makeRoom(need: number): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const files = listCache();
+    // téléchargements interrompus : suppression après 3 min
+    for (const x of files) if (x.p.endsWith(".part") && Date.now() - x.mt > 180_000) rmSync(x.p, { force: true });
+    const dbs = files.filter((x) => x.p.endsWith(".db"));
+    let total = reserved + dbs.reduce((t, x) => t + x.size, 0);
+    if (total + need <= BUDGET) {
+      reserved += need;
+      return;
     }
-  } catch { /* dossier absent */ }
+    for (const x of dbs.filter((d) => !pins.has(d.p)).sort((a, b) => a.at - b.at)) {
+      for (const [k, c] of clients) if (k.split("|").includes(x.p)) { c.close(); clients.delete(k); }
+      rmSync(x.p, { force: true });
+      total -= x.size;
+      if (total + need <= BUDGET) {
+        reserved += need;
+        return;
+      }
+    }
+    if (Date.now() > deadline) throw new ScopeBusy();
+    await new Promise<void>((res) => { waiters.push(res); setTimeout(res, 1000); });
+  }
 }
 
 async function ensureShard(manifest: Manifest, shard: ShardInfo): Promise<string> {
-  const target = path.join(CACHE_DIR, `${manifest.dep}-${shard.id}-${manifest.builtAt.replace(/\W/g, "")}.db`);
+  const target = shardPath(manifest, shard);
   try {
     if (statSync(target).size === shard.raw) return target;
   } catch { /* à télécharger */ }
@@ -127,25 +177,51 @@ async function ensureShard(manifest: Manifest, shard: ShardInfo): Promise<string
   if (!p) {
     p = (async () => {
       mkdirSync(CACHE_DIR, { recursive: true });
-      evict([target]);
+      await makeRoom(shard.raw);
       const tmp = `${target}.${process.pid}.${Date.now()}.part`;
       const t0 = Date.now();
-      const dir = process.env.DATA_SHARDS_DIR;
-      let body: Readable;
-      if (dir) body = createReadStream(path.join(dir, shard.file));
-      else {
-        const res = await fetch(`https://github.com/${repo()}/releases/download/data-${manifest.dep}/${shard.file}`, { redirect: "follow", signal: AbortSignal.timeout(60_000) });
-        if (!res.ok || !res.body) throw new Error(`morceau ${shard.file} : HTTP ${res.status}`);
-        body = Readable.fromWeb(res.body as never);
+      try {
+        const dir = process.env.DATA_SHARDS_DIR;
+        let body: Readable;
+        if (dir) body = createReadStream(path.join(dir, shard.file));
+        else {
+          const res = await fetch(`https://github.com/${repo()}/releases/download/data-${manifest.dep}/${shard.file}`, { redirect: "follow", signal: AbortSignal.timeout(60_000) });
+          if (!res.ok || !res.body) throw new Error(`morceau ${shard.file} : HTTP ${res.status}`);
+          body = Readable.fromWeb(res.body as never);
+        }
+        await pipeline(body, createBrotliDecompress(), createWriteStream(tmp));
+        renameSync(tmp, target);
+      } catch (e) {
+        rmSync(tmp, { force: true });
+        throw e;
+      } finally {
+        reserved -= shard.raw;
       }
-      await pipeline(body, createBrotliDecompress(), createWriteStream(tmp));
-      renameSync(tmp, target);
       console.log(`[shards] ${shard.file} prêt (${Math.round(shard.raw / 1e6)} Mo) en ${Date.now() - t0} ms`);
       return target;
     })().finally(() => inflight.delete(target));
     inflight.set(target, p);
   }
   return p;
+}
+
+/** Épingle les morceaux (à l'abri de la suppression) puis garantit leur présence sur disque. */
+async function acquire(picked: { manifest: Manifest; shard: ShardInfo }[]): Promise<{ files: string[]; release: () => void }> {
+  const targets = picked.map((p) => shardPath(p.manifest, p.shard));
+  pin(targets);
+  let released = false;
+  const release = () => {
+    if (!released) { released = true; unpin(targets); }
+  };
+  try {
+    await Promise.all(picked.map((p) => ensureShard(p.manifest, p.shard)));
+    const now = new Date();
+    for (const f of targets) { try { utimesSync(f, now, now); } catch { /* ignore */ } }
+    return { files: [...targets].sort(), release };
+  } catch (e) {
+    release();
+    throw e;
+  }
 }
 
 /* ───────── connexions (une vue unifiée quand plusieurs morceaux sont lus ensemble) ───────── */
@@ -166,12 +242,10 @@ async function clientFor(files: string[]): Promise<Client> {
     }
   }
   clients.set(key, c);
-  files.forEach((f) => inUse.add(f));
-  while (clients.size > 6) {
+  while (clients.size > 3) {
     const [k, old] = clients.entries().next().value as [string, Client];
     clients.delete(k);
     old.close();
-    k.split("|").forEach((f) => { if (![...clients.keys()].some((kk) => kk.split("|").includes(f))) inUse.delete(f); });
   }
   return c;
 }
@@ -184,34 +258,38 @@ export const scopedClient = () => als.getStore()?.client;
 
 /**
  * Exécute `fn` avec les données de la zone demandée : toutes les requêtes `query()` lisent alors les morceaux concernés.
- * Lève ScopeTooWide si la zone recouvre trop de morceaux.
+ * Lève ScopeTooWide si la zone recouvre trop de morceaux, ScopeBusy si l'espace temporaire est momentanément saturé.
  */
 export async function withData<T>(spec: ScopeSpec, fn: () => Promise<T>): Promise<T> {
   if (!shardsEnabled()) return fn();
-  let picked = await pickShards(spec);
-  // Fiche parcelle : on ajoute les morceaux voisins de la parcelle (ventes comparables, bâtiments à cheval sur deux morceaux)
-  if (spec.near && spec.idus?.length && picked.length) {
-    try {
-      const own = await Promise.all(picked.map((p) => ensureShard(p.manifest, p.shard)));
-      const r = await (await clientFor([...own].sort())).execute({ sql: "select lon, lat from parcelles where idu = ?", args: [spec.idus[0]!] });
-      const lon = Number(r.rows[0]?.[0]), lat = Number(r.rows[0]?.[1]);
-      if (Number.isFinite(lon) && Number.isFinite(lat)) {
-        const extra = await pickShards({ bbox: [lon - 0.02, lat - 0.015, lon + 0.02, lat + 0.015] });
-        const all = new Map(picked.map((p) => [`${p.manifest.dep}-${p.shard.id}`, p]));
-        for (const e of extra) all.set(`${e.manifest.dep}-${e.shard.id}`, e);
-        if (all.size <= MAX_SHARDS) picked = [...all.values()];
-      }
-    } catch (e) {
-      if (e instanceof ScopeTooWide) throw e;
-      console.warn("[shards] voisins ignorés :", e instanceof Error ? e.message : e);
-    }
-  }
+  const picked = await pickShards(spec);
   if (!picked.length) return als.run({ client: null }, fn);
-  const files = await Promise.all(picked.map((p) => ensureShard(p.manifest, p.shard)));
-  const now = new Date();
-  for (const f of files) { try { utimesSync(f, now, now); } catch { /* ignore */ } }
-  const client = await clientFor([...files].sort());
-  return als.run({ client }, fn);
+  let acq = await acquire(picked);
+  try {
+    // Fiche parcelle : on ajoute les morceaux voisins de la parcelle (ventes comparables, bâtiments à cheval sur deux morceaux)
+    if (spec.near && spec.idus?.length) {
+      try {
+        const r = await (await clientFor(acq.files)).execute({ sql: "select lon, lat from parcelles where idu = ?", args: [spec.idus[0]!] });
+        const lon = Number(r.rows[0]?.[0]), lat = Number(r.rows[0]?.[1]);
+        if (Number.isFinite(lon) && Number.isFinite(lat)) {
+          const extra = await pickShards({ bbox: [lon - 0.02, lat - 0.015, lon + 0.02, lat + 0.015] });
+          const all = new Map(picked.map((p) => [`${p.manifest.dep}-${p.shard.id}`, p]));
+          for (const e of extra) all.set(`${e.manifest.dep}-${e.shard.id}`, e);
+          if (all.size > picked.length && all.size <= MAX_SHARDS) {
+            const next = await acquire([...all.values()]);
+            acq.release();
+            acq = next;
+          }
+        }
+      } catch (e) {
+        console.warn("[shards] voisins ignorés :", e instanceof Error ? e.message : e);
+      }
+    }
+    const client = await clientFor(acq.files);
+    return await als.run({ client }, fn);
+  } finally {
+    acq.release();
+  }
 }
 
 /** Emprise d'une tuile XYZ. */
