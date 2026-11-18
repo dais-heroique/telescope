@@ -11,6 +11,7 @@ import { LeftPanel } from "./LeftPanel";
 import { RightPanel } from "./RightPanel";
 import { CommandPalette } from "./CommandPalette";
 import { DrawToolbar } from "@/components/map/DrawToolbar";
+import { ZoomHint } from "@/components/map/ZoomHint";
 
 // MapLibre accède à window/WebGL : rendu client uniquement.
 const MapView = dynamic(() => import("@/components/map/MapView"), {
@@ -73,6 +74,7 @@ export function MapWorkspace() {
         <main className="relative min-w-0 flex-1">
           <MapView />
           <DrawToolbar />
+          <ZoomHint />
           <RightPanel />
         </main>
       </div>

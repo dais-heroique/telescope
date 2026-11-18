@@ -37,7 +37,7 @@ export function baseStyle(): StyleSpecification {
       pci: {
         type: "vector",
         tiles: [PCI_TILES],
-        minzoom: 5,
+        minzoom: 12,
         maxzoom: 19,
         promoteId: { parcelle: "idu" },
         attribution: ATTRIBUTION,
