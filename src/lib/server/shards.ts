@@ -86,8 +86,6 @@ export async function pickShards(spec: ScopeSpec): Promise<{ manifest: Manifest;
       const c = s.communes.find((x) => x.insee === insee);
       if (!c) continue;
       add(m, s);
-      // morceaux voisins (comparables de ventes, bâtiments à cheval sur deux morceaux)
-      if (spec.near) for (const o of m.shards) if (o.id !== s.id && o.communes.some((x) => inter(x.bbox, c.bbox, 0.01))) add(m, o);
     }
   }
   if (spec.bbox) {
@@ -190,7 +188,24 @@ export const scopedClient = () => als.getStore()?.client;
  */
 export async function withData<T>(spec: ScopeSpec, fn: () => Promise<T>): Promise<T> {
   if (!shardsEnabled()) return fn();
-  const picked = await pickShards(spec);
+  let picked = await pickShards(spec);
+  // Fiche parcelle : on ajoute les morceaux voisins de la parcelle (ventes comparables, bâtiments à cheval sur deux morceaux)
+  if (spec.near && spec.idus?.length && picked.length) {
+    try {
+      const own = await Promise.all(picked.map((p) => ensureShard(p.manifest, p.shard)));
+      const r = await (await clientFor([...own].sort())).execute({ sql: "select lon, lat from parcelles where idu = ?", args: [spec.idus[0]!] });
+      const lon = Number(r.rows[0]?.[0]), lat = Number(r.rows[0]?.[1]);
+      if (Number.isFinite(lon) && Number.isFinite(lat)) {
+        const extra = await pickShards({ bbox: [lon - 0.02, lat - 0.015, lon + 0.02, lat + 0.015] });
+        const all = new Map(picked.map((p) => [`${p.manifest.dep}-${p.shard.id}`, p]));
+        for (const e of extra) all.set(`${e.manifest.dep}-${e.shard.id}`, e);
+        if (all.size <= MAX_SHARDS) picked = [...all.values()];
+      }
+    } catch (e) {
+      if (e instanceof ScopeTooWide) throw e;
+      console.warn("[shards] voisins ignorés :", e instanceof Error ? e.message : e);
+    }
+  }
   if (!picked.length) return als.run({ client: null }, fn);
   const files = await Promise.all(picked.map((p) => ensureShard(p.manifest, p.shard)));
   const now = new Date();
