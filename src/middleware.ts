@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC = ["/login", "/api/auth/login", "/api/auth/logout"];
+const PUBLIC = ["/login", "/api/auth/login", "/api/auth/logout", "/oauth/authorize"];
+// Connecteur Claude : ces routes se protègent elles-mêmes (OAuth + jeton Bearer) et doivent être joignables sans cookie de session
+const PUBLIC_PREFIX = ["/.well-known/", "/api/oauth/", "/api/mcp"];
 
 /** Protège tout le site : session JWT signée (cookie). La révocation d'un utilisateur est vérifiée côté serveur (getUser). */
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  if (PUBLIC.some((p) => path === p)) return NextResponse.next();
+  if (PUBLIC.some((p) => path === p) || PUBLIC_PREFIX.some((p) => path.startsWith(p))) return NextResponse.next();
 
   const secret = process.env.AUTH_SECRET;
   if (!secret || secret.length < 16) {
@@ -18,8 +20,8 @@ export async function middleware(req: NextRequest) {
   let ok = false;
   if (token) {
     try {
-      await jwtVerify(token, new TextEncoder().encode(secret), { algorithms: ["HS256"] });
-      ok = true;
+      const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), { algorithms: ["HS256"] });
+      ok = !payload.purpose; // un jeton du connecteur Claude n'ouvre pas le site
     } catch {
       ok = false;
     }

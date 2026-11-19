@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 
 /**
  * Accès par code unique (variable d'environnement ACCESS_CODE, jamais écrite dans le dépôt) : une fois le code saisi, un cookie de
@@ -45,7 +45,26 @@ export async function verifySessionToken(token: string): Promise<string | null> 
   if (!key) return null;
   try {
     const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"] });
+    if (payload.purpose) return null; // les jetons du connecteur Claude ne sont pas des sessions du site
     return payload.sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Jeton signé à usage précis (« purpose ») : connecteur Claude (client, code d'autorisation, accès, renouvellement). */
+export async function signJwt(purpose: string, claims: Record<string, unknown>, ttl: string): Promise<string> {
+  const key = secretKey();
+  if (!key) throw new Error("AUTH_SECRET manquant");
+  return new SignJWT({ ...claims, purpose }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(ttl).sign(key);
+}
+
+export async function verifyJwt(token: string, purpose: string): Promise<JWTPayload | null> {
+  const key = secretKey();
+  if (!key) return null;
+  try {
+    const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"] });
+    return payload.purpose === purpose ? payload : null;
   } catch {
     return null;
   }
