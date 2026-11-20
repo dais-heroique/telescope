@@ -34,6 +34,9 @@ export async function copyCsvToStaging(sql: Sql, table: string, input: Readable,
       encoding: opts.encoding ?? "utf8",
     }),
   );
+  // .pipe() ne propage pas les erreurs de la source : une coupure réseau ferait planter tout le processus
+  // (« Unhandled 'error' event ») au lieu de faire échouer seulement cette étape.
+  input.on("error", (e) => parser.destroy(e));
   const it = (parser as AsyncIterable<Record<string, string>>)[Symbol.asyncIterator]();
   const first = await it.next();
   const cols = opts.select ?? (first.done ? [] : Object.keys(first.value));
