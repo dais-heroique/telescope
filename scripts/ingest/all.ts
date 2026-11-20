@@ -3,10 +3,10 @@
  *   npm run ingest -- --dep=74
  *   npm run ingest -- --dep=74 --only=dvf,dpe        (certaines étapes seulement)
  *   npm run ingest -- --dep=74 --skip=rnic           (toutes sauf …)
- * Ordre : cadastre → bdnb → dvf → dpe → plu → sitadel → rnic → personnes morales → loyers → vacance → features.
+ * Ordre : cadastre → bâtiments du cadastre → bdnb → dvf → dpe → plu → sitadel → rnic → personnes morales → loyers → vacance → features.
  */
 import { closeDb } from "./lib/db";
-import { ingestCadastre } from "./cadastre";
+import { ingestCadastre, ingestCadastreBatiments } from "./cadastre";
 import { ingestBdnb } from "./bdnb";
 import { ingestDvf } from "./dvf";
 import { ingestDpe } from "./dpe";
@@ -19,6 +19,7 @@ import { buildFeatures } from "./features";
 
 const STEPS: [string, (dep: string) => Promise<unknown>][] = [
   ["cadastre", ingestCadastre],
+  ["cadastre_bati", ingestCadastreBatiments],
   ["bdnb", ingestBdnb],
   ["dvf", ingestDvf],
   ["dpe", ingestDpe],

@@ -41,9 +41,12 @@ export const SCORING = {
 
 /** Seuils des détections « marchands de biens » (appliqués en SQL dans scripts/ingest/features.ts, documentés ici). */
 export const DETECTION = {
-  monopropriete: { minLogements: 2 },
-  divisible: { minContenance: 1000, minSurfaceLibre: 650, minEmprise: 40, bigHouseEmpriseNiveaux: 260 },
-  dentCreuse: { minContenance: 150, maxContenance: 3000, neighbourRadiusM: 15, minBuiltNeighbours: 0.6 },
+  // Immeuble d'habitation (≥ minLogements) détenu par une seule société privée, sans copropriété immatriculée
+  monopropriete: { minLogements: 3 },
+  // Maison sur un grand terrain dont la partie libre (à plus de recul m des bâtiments) forme un lot détachable accessible depuis la voie
+  divisible: { minContenance: 1200, recul: 4, minLot: 500, minLargeurLot: 14, minFacadeLot: 5 },
+  // Terrain nu en zone urbaine (U) : non bâti, compact, accessible depuis la voie, entouré de parcelles bâties
+  dentCreuse: { minContenance: 400, maxContenance: 5000, maxBatiM2: 15, minLargeur: 12, minCompacite: 0.25, minFacade: 6, minVoisinsBatis: 2, minPartVoisinsBatis: 0.5, permisRecentAns: 3 },
 } as const;
 
 /** Hypothèses INDICATIVES du module Promoteurs (le règlement de PLU n'est pas exploité automatiquement). */

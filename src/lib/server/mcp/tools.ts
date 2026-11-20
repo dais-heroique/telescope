@@ -77,7 +77,7 @@ const searchArgs = z
     rayon_m: z.number().min(50).max(3000).optional().describe("Rayon en mètres autour du centre (50 à 3000)"),
     insee: z.string().regex(/^(\d{5}|2[AB]\d{3})$/).optional().describe("Code INSEE de la commune à explorer"),
     filtres: filtersSchema.optional().describe(
-      "Filtres combinables : usages (« Résidentiel individuel », « Résidentiel collectif », « Tertiaire »…), surfParcelle/emprise/surfLibre [min,max] en m², prix/prixM2 [min,max], venduApres/venduAvant (AAAA-MM-JJ), detention [min,max] années, dpe ['D'…], plu ['U','AU','A','N'], annee [min,max] construction, logements [min,max], pm ('oui'|'non'|'societes'), pmNom, pmForme, copro ('oui'|'non'), scoreMin (0–100), flags (passoire, divisible, monopropriete, dent_creuse).",
+      "Filtres combinables : usages (« Résidentiel individuel », « Résidentiel collectif », « Tertiaire »…), surfParcelle/emprise/surfLibre [min,max] en m², prix/prixM2 [min,max], venduApres/venduAvant (AAAA-MM-JJ), detention [min,max] années, dpe ['D'…], plu ['U','AU','A','N'], annee [min,max] construction, logements [min,max], pm ('oui'|'non'|'societes'), pmNom, pmForme, copro ('oui'|'non'), scoreMin (0–100), flags (passoire = DPE F/G ; divisible = maison dont le jardin forme un lot détachable ≥ 500 m² accessible depuis la voie ; monopropriete = immeuble ≥ 3 logements détenu par une seule société, sans copropriété ; dent_creuse = terrain nu en zone U entouré de bâti, avec façade sur voie).",
     ),
     tri: z.enum(ORDERS).default("score").describe("Tri : score (probabilité de vente), surface, prix, vente (récente), detention, logements"),
     limite: z.number().int().min(1).max(50).default(20),

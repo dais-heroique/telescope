@@ -36,9 +36,9 @@ export async function getSynthese(base: ParcelBase): Promise<Synthese> {
 
   const flags: Synthese["flags"] = [];
   if (f.is_passoire) flags.push({ key: "passoire", label: "Passoire thermique (F/G)" });
-  if (f.is_divisible) flags.push({ key: "divisible", label: "Bien divisible" });
-  if (f.is_monopropriete) flags.push({ key: "monopropriete", label: "Immeuble en monopropriété probable" });
-  if (f.is_dent_creuse) flags.push({ key: "dent_creuse", label: "Dent creuse" });
+  if (f.is_divisible) flags.push({ key: "divisible", label: f.lot_libre_m2 ? `Terrain divisible · lot détachable ≈ ${Math.round(Number(f.lot_libre_m2))} m²` : "Terrain divisible" });
+  if (f.is_monopropriete) flags.push({ key: "monopropriete", label: "Immeuble en monopropriété (une seule société)" });
+  if (f.is_dent_creuse) flags.push({ key: "dent_creuse", label: "Dent creuse · terrain nu constructible entouré de bâti" });
   let score: Synthese["score"] = null;
   if (f.score !== null && f.score !== undefined) {
     let factors: { label: string; points: number; detail?: string }[] = [];

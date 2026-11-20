@@ -18,6 +18,8 @@ export interface ScoreInput {
   isDivisible: boolean;
   isMonopropriete: boolean;
   isDentCreuse: boolean;
+  /** Divisible : surface du lot détachable estimé (m²). */
+  lotLibreM2?: number | null;
   /** Immeuble en copropriété : la « dernière vente » est celle d'un lot, pas du bien → pas de facteur de détention. */
   collectifCopro?: boolean;
 }
@@ -86,9 +88,9 @@ export function scoreParcel(f: ScoreInput, c: CommuneContext): { score: number; 
   }
 
   // 7. Détections « opportunité »
-  if (f.isMonopropriete) add("Immeuble en monopropriété", S.monopropriete, "collectif sans copropriété immatriculée");
-  if (f.isDivisible) add("Bien divisible", S.divisible);
-  if (f.isDentCreuse) add("Dent creuse", S.dentCreuse);
+  if (f.isMonopropriete) add("Immeuble en monopropriété", S.monopropriete, "un seul propriétaire (société), sans copropriété");
+  if (f.isDivisible) add("Terrain divisible", S.divisible, f.lotLibreM2 ? `lot détachable estimé ≈ ${Math.round(f.lotLibreM2)} m² accessible depuis la voie` : "lot détachable accessible depuis la voie");
+  if (f.isDentCreuse) add("Dent creuse", S.dentCreuse, "terrain nu constructible en zone urbaine, entouré de bâti");
 
   // 8. Plus-value latente
   if (f.lastSalePrixM2 && c.prixM2Median && f.lastSalePrixM2 > 0 && (f.lastSaleType === "Maison" || f.lastSaleType === "Appartement")) {

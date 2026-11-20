@@ -82,7 +82,7 @@ function Chips<T extends string>({ label, options, value, onChange, render }: { 
   );
 }
 
-const FLAG_LABELS: Record<(typeof FLAGS)[number], string> = { passoire: "Passoire F/G", divisible: "À diviser", monopropriete: "Monopropriété", dent_creuse: "Dent creuse" };
+const FLAG_LABELS: Record<(typeof FLAGS)[number], string> = { passoire: "Passoire F/G", divisible: "Terrain divisible", monopropriete: "Monopropriété", dent_creuse: "Dent creuse" };
 const sameFilters = (a: Filters, b: Filters) => JSON.stringify(a) === JSON.stringify(b);
 
 export function FiltersPanel() {
@@ -125,6 +125,7 @@ export function FiltersPanel() {
 
         <Chips label="Type de bien" options={USAGES} value={filters.usages as (typeof USAGES)[number][] | undefined} onChange={(v) => set("usages", v)} render={(o) => USAGE_LABELS[o] ?? o} />
         <Chips label="Détections" options={FLAGS} value={filters.flags} onChange={(v) => set("flags", v)} render={(o) => FLAG_LABELS[o]} />
+        <p className="-mt-1 text-[11px] leading-snug text-muted-foreground">Divisible : maison dont le jardin forme un lot ≥ 500 m² accessible depuis la rue. Dent creuse : terrain nu en zone U, entouré de maisons, avec façade sur rue. Monopropriété : immeuble ≥ 3 logements détenu par une seule société, sans copropriété.</p>
         <div>
           <p className="mb-1 text-xs text-muted-foreground">Score de vente minimum : <strong>{scoreDraft}</strong></p>
           <input

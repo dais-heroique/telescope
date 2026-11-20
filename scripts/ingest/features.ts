@@ -152,7 +152,7 @@ export async function buildFeatures(dep: string) {
         plu_libelle = excluded.plu_libelle, nb_permis_5y = excluded.nb_permis_5y, last_permis_date = excluded.last_permis_date,
         nb_permis_proches = excluded.nb_permis_proches, computed_at = now()`);
 
-    await detections(q);
+    await detections(q, dep);
     await communeStats(q);
     await sql`analyze parcel_features`;
     const [{ n }] = await sql<{ n: string }[]>`select count(*) n from parcel_features where dep = ${dep}`;
@@ -160,32 +160,97 @@ export async function buildFeatures(dep: string) {
   });
 }
 
-/** Détections « marchands de biens » (seuils : config/scoring.ts → DETECTION). */
-async function detections(q: (text: string) => Promise<unknown>) {
+/**
+ * Détections « marchands de biens » (seuils : config/scoring.ts → DETECTION). Contrôles géométriques en mètres :
+ * géométries 3857 corrigées par k = cos(latitude). Emprise bâtie réelle = bâtiments du cadastre ∪ BDNB.
+ * Validées par échantillonnage visuel sur photo aérienne (voir scripts/ingest/features.ts, historique git).
+ */
+async function detections(q: (text: string) => Promise<unknown>, dep: string) {
   const D = DETECTION;
-  const publicOwner = `(f.pm_groupe is not null and f.pm_groupe <> 'personnes morales non remarquables')`;
-  // Monopropriété : immeuble collectif (≥ 2 logements, BDNB) sans immatriculation RNIC, hors propriétaire public/HLM
-  await q(`update parcel_features f set is_monopropriete = coalesce(
-      f.usage_principal = 'Résidentiel collectif' and coalesce(f.nb_logements, 0) >= ${D.monopropriete.minLogements} and not f.is_copro and not ${publicOwner}, false)
-    where f.dep = $1`);
-  // Bien divisible : grande parcelle bâtie en zone U/AU avec surface libre importante, ou grosse maison peu divisée
-  await q(`update parcel_features f set is_divisible = coalesce(
-      f.plu_type is not null and (f.plu_type like 'U%' or f.plu_type like 'AU%') and not ${publicOwner} and not f.is_copro and (
-        (f.nb_batiments > 0 and coalesce(f.contenance, 0) >= ${D.divisible.minContenance} and coalesce(f.surface_libre, 0) >= ${D.divisible.minSurfaceLibre}
-          and coalesce(f.emprise_bati, 0) >= ${D.divisible.minEmprise} and coalesce(f.nb_logements, 0) <= 2)
-        or (f.usage_principal = 'Résidentiel individuel' and coalesce(f.emprise_bati, 0) * greatest(coalesce(f.nb_niveaux, 1), 1) >= ${D.divisible.bigHouseEmpriseNiveaux}
-          and coalesce(f.nb_logements, 0) <= 2)), false)
-    where f.dep = $1`);
-  // Dent creuse : parcelle non bâtie en zone U/AU, entourée majoritairement de parcelles bâties
-  await q(`update parcel_features f set is_dent_creuse = false where f.dep = $1`);
-  await q(`update parcel_features f set is_dent_creuse = true
+  const T = (name: string) => `x_${name}_${dep.toLowerCase()}`; // tables de travail (dep validé)
+  const privateOrNone = `(f.pm_groupe is null or f.pm_groupe = 'personnes morales non remarquables')`;
+
+  // Emprise bâtie réelle des parcelles susceptibles d'être concernées (zone U/AU, 400 m² à 2 ha)
+  await q(`drop table if exists ${T("bati")}`);
+  await q(`create unlogged table ${T("bati")} as
+    select p.idu, st_union(st_intersection(b.g, p.geom_3857)) as g
     from parcelles p
-    where p.idu = f.idu and f.dep = $1 and f.nb_batiments = 0 and (f.plu_type like 'U%' or f.plu_type like 'AU%')
-      and f.contenance between ${D.dentCreuse.minContenance} and ${D.dentCreuse.maxContenance}
-      and (f.pm_groupe is null or f.pm_groupe = 'personnes morales non remarquables')
-      and (select count(*) filter (where nf.nb_batiments > 0)::float / nullif(count(*), 0)
-           from parcelles np join parcel_features nf on nf.idu = np.idu
-           where np.idu <> p.idu and np.dep = $1 and st_dwithin(np.geom_3857, p.geom_3857, ${Math.round(D.dentCreuse.neighbourRadiusM / Math.cos((46 * Math.PI) / 180))})) >= ${D.dentCreuse.minBuiltNeighbours}`);
+    join parcel_features f on f.idu = p.idu
+    join lateral (
+      select c.geom_3857 as g from cad_batiments c where c.dep = $1 and st_intersects(c.geom_3857, p.geom_3857)
+      union all
+      select b.geom_3857 from batiments b where b.dep = $1 and st_intersects(b.geom_3857, p.geom_3857)
+    ) b on true
+    where p.dep = $1 and f.contenance between ${D.dentCreuse.minContenance} and 20000 and (f.plu_type like 'U%' or f.plu_type like 'AU%')
+    group by p.idu`);
+  await q(`create index on ${T("bati")} (idu)`);
+
+  // ── Dent creuse ──
+  await q(`update parcel_features f set is_dent_creuse = false where f.dep = $1`);
+  await q(`drop table if exists ${T("dc")}`);
+  await q(`create unlogged table ${T("dc")} as
+    with cand as (
+      select p.idu, p.geom_3857 as g, cos(radians(st_y(p.pt))) as k
+      from parcelles p join parcel_features f using (idu)
+      where p.dep = $1 and f.plu_type like 'U%' and f.contenance between ${D.dentCreuse.minContenance} and ${D.dentCreuse.maxContenance}
+        and not f.is_copro and ${privateOrNone}
+        -- pas de trou : une parcelle qui entoure une maison enclavée est un jardin, pas un terrain à bâtir
+        and (select coalesce(sum(st_numinteriorrings(d.geom)), 0) from st_dump(p.geom_3857) d) = 0
+        and coalesce((select st_area(t.g) from ${T("bati")} t where t.idu = p.idu), 0) * cos(radians(st_y(p.pt))) ^ 2 < ${D.dentCreuse.maxBatiM2}
+        and not exists (select 1 from permis_parcelles pp join permis pe using (num_dau)
+                        where pp.idu = p.idu and pe.date_autorisation >= current_date - interval '${D.dentCreuse.permisRecentAns} years')
+    ), nb as (
+      select c.idu, c.g, c.k, count(n.idu) as n_voisins,
+             count(n.idu) filter (where exists (select 1 from cad_batiments b where b.dep = $1 and st_intersects(b.geom_3857, n.geom_3857))) as n_bati,
+             st_union(n.geom_3857) as voisins
+      from cand c join parcelles n on n.dep = $1 and n.idu <> c.idu and st_dwithin(n.geom_3857, c.g, 1.0 / c.k)
+      group by c.idu, c.g, c.k
+    )
+    select idu, n_voisins, n_bati,
+           2 * st_area(g) / nullif(st_perimeter(g), 0) * k as largeur,
+           4 * pi() * st_area(g) / nullif(st_perimeter(g) ^ 2, 0) as compacite,
+           st_length(st_difference(st_boundary(g), st_buffer(voisins, 1.5 / k))) * k as facade
+    from nb`);
+  await q(`update parcel_features f set is_dent_creuse = true from ${T("dc")} x
+    where x.idu = f.idu and x.largeur >= ${D.dentCreuse.minLargeur} and x.compacite >= ${D.dentCreuse.minCompacite}
+      and x.facade >= ${D.dentCreuse.minFacade} and x.n_bati >= ${D.dentCreuse.minVoisinsBatis}
+      and x.n_bati::float / nullif(x.n_voisins, 0) >= ${D.dentCreuse.minPartVoisinsBatis}`);
+
+  // ── Divisible ──
+  await q(`update parcel_features f set is_divisible = false, lot_libre_m2 = null where f.dep = $1`);
+  await q(`drop table if exists ${T("div")}`);
+  await q(`create unlogged table ${T("div")} as
+    with cand as (
+      select p.idu, p.geom_3857 as g, cos(radians(st_y(p.pt))) as k, t.g as bati
+      from parcelles p join parcel_features f using (idu) join ${T("bati")} t using (idu)
+      where p.dep = $1 and f.usage_principal = 'Résidentiel individuel' and coalesce(f.nb_logements, 1) <= 2
+        and (f.plu_type like 'U%' or f.plu_type like 'AU%') and f.contenance >= ${D.divisible.minContenance}
+        and not f.is_copro and ${privateOrNone}
+    ), free as (
+      select c.idu, c.k, c.g,
+             (select d.geom from st_dump(st_difference(c.g, st_buffer(c.bati, ${D.divisible.recul}.0 / c.k))) d order by st_area(d.geom) desc limit 1) as lot
+      from cand c
+    ), front as (
+      select f.idu, f.k, f.lot,
+             st_difference(st_boundary(f.g), st_buffer((select st_union(n.geom_3857) from parcelles n
+               where n.dep = $1 and n.idu <> f.idu and st_dwithin(n.geom_3857, f.g, 1.0 / f.k)), 1.5 / f.k)) as facade_parcelle
+      from free f
+    )
+    select idu,
+           st_area(lot) * k ^ 2 as lot_m2,
+           2 * st_area(lot) / nullif(st_perimeter(lot), 0) * k as lot_largeur,
+           coalesce(st_length(st_intersection(facade_parcelle, st_buffer(lot, 0.5 / k))) * k, 0) as lot_facade
+    from front where lot is not null`);
+  await q(`update parcel_features f set is_divisible = true, lot_libre_m2 = round(x.lot_m2::numeric) from ${T("div")} x
+    where x.idu = f.idu and x.lot_m2 >= ${D.divisible.minLot} and x.lot_largeur >= ${D.divisible.minLargeurLot} and x.lot_facade >= ${D.divisible.minFacadeLot}`);
+
+  // ── Monopropriété : un seul propriétaire, une société privée, pour tout l'immeuble ──
+  await q(`update parcel_features f set is_monopropriete = coalesce(
+      f.usage_principal = 'Résidentiel collectif' and coalesce(f.nb_logements, 0) >= ${D.monopropriete.minLogements} and not f.is_copro
+      and f.is_pm and f.pm_count = 1 and f.pm_groupe = 'personnes morales non remarquables', false)
+    where f.dep = $1`);
+
+  for (const t of ["bati", "dc", "div"]) await q(`drop table if exists ${T(t)}`);
 }
 
 /**

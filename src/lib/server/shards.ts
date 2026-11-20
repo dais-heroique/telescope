@@ -237,7 +237,14 @@ async function clientFor(files: string[]): Promise<Client> {
     c = createClient({ url: ":memory:" });
     for (let i = 0; i < files.length; i++) await c.execute(`attach database '${files[i]!.replace(/'/g, "''")}' as s${i}`);
     for (const t of TABLES) {
-      await c.execute(`create temp view ${t} as ${files.map((_, i) => `select * from s${i}.${t}`).join(" union all ")}`);
+      // Colonnes communes à tous les morceaux : un morceau reconstruit (colonne ajoutée) reste lisible avec un plus ancien
+      let common: string[] | null = null;
+      for (let i = 0; i < files.length; i++) {
+        const cols = (await c.execute(`pragma s${i}.table_info(${t})`)).rows.map((r) => String(r.name));
+        common = common ? common.filter((x) => cols.includes(x)) : cols;
+      }
+      const list = common && common.length ? common.map((x) => `"${x}"`).join(", ") : "*";
+      await c.execute(`create temp view ${t} as ${files.map((_, i) => `select ${list} from s${i}.${t}`).join(" union all ")}`);
     }
   }
   clients.set(key, c);

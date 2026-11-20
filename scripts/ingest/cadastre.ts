@@ -57,3 +57,43 @@ export async function ingestCadastre(dep: string) {
     return { rows: total, sourceRef: url };
   });
 }
+
+/**
+ * Bâtiments du cadastre Etalab (une Feature par ligne). Utilisés uniquement pour les détections (parcelle bâtie ou non,
+ * surface libre réelle) : la BDNB ignore une partie des annexes et des constructions récentes.
+ */
+export async function ingestCadastreBatiments(dep: string) {
+  return trackRun("cadastre_batiments", dep, async () => {
+    const url = `https://cadastre.data.gouv.fr/data/etalab-cadastre/latest/geojson/departements/${dep}/cadastre-${dep}-batiments.json.gz`;
+    const file = await download(url, cachePath(dep, `cadastre-${dep}-batiments.json.gz`));
+    const sql = db();
+    await sql`delete from cad_batiments where dep = ${dep}`;
+    let types: string[] = [], geoms: string[] = [];
+    let total = 0;
+    const flush = async () => {
+      if (!geoms.length) return;
+      await sql`
+        insert into cad_batiments (dep, type, geom)
+        select ${dep}, t.type, st_multi(st_collectionextract(st_makevalid(st_setsrid(st_geomfromgeojson(t.g), 4326)), 3))
+        from unnest(${types}::text[], ${geoms}::text[]) as t(type, g)`;
+      total += geoms.length;
+      types = []; geoms = [];
+      if (total % 50000 < 2000) process.stdout.write(`  cadastre bâtiments ${total}\r`);
+    };
+    const rl = createInterface({ input: createReadStream(file).pipe(createGunzip()), crlfDelay: Infinity });
+    for await (const raw of rl) {
+      let line = raw.trim().replace(/,$/, "");
+      if (line.endsWith("}}]}")) line = line.slice(0, -2);
+      if (!line.startsWith('{"type":"Feature"')) continue;
+      const f = JSON.parse(line) as { geometry: unknown; properties: Record<string, unknown> };
+      if (!f.geometry) continue;
+      types.push(String(f.properties.type ?? ""));
+      geoms.push(JSON.stringify(f.geometry));
+      if (geoms.length >= 2000) await flush();
+    }
+    await flush();
+    await sql`delete from cad_batiments where dep = ${dep} and st_isempty(geom)`;
+    await sql`analyze cad_batiments`;
+    return { rows: total, sourceRef: url };
+  });
+}

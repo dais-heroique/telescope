@@ -6,7 +6,7 @@ const FEATURE_COLS = `
   nb_ventes integer, last_sale_date text, last_sale_price real, last_sale_prix_m2 real, last_sale_type text, hold_years real,
   nb_dpe integer, dpe_latest text, dpe_latest_date text, dpe_worst text, is_passoire integer, dpe_conso_m2 real,
   plu_type text, plu_libelle text, nb_permis_5y integer, last_permis_date text, nb_permis_proches integer,
-  score integer, score_factors text, is_divisible integer, is_monopropriete integer, is_dent_creuse integer`;
+  score integer, score_factors text, is_divisible integer, is_monopropriete integer, is_dent_creuse integer, lot_libre_m2 real`;
 
 export const FEATURE_COLUMNS = FEATURE_COLS.split(",").map((c) => c.trim().split(/\s+/)[0]).filter(Boolean);
 

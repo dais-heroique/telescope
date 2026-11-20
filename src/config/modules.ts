@@ -34,7 +34,7 @@ export const MODULES: Record<ModuleId, ModuleConfig> = {
     description: "Biens à diviser, immeubles en monopropriété, passoires à rénover, dents creuses.",
     defaultLayers: ["parcelles", "batiments", "dpe", "copros"],
     quickFilters: [
-      { label: "Biens à diviser", filters: { flags: ["divisible"] } },
+      { label: "Terrains divisibles", filters: { flags: ["divisible"] } },
       { label: "Monopropriétés", filters: { flags: ["monopropriete"] } },
       { label: "Passoires à rénover", filters: { flags: ["passoire"] } },
       { label: "Dents creuses", filters: { flags: ["dent_creuse"] } },

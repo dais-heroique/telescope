@@ -54,6 +54,17 @@ create table public.batiments (
 create index batiments_geom_3857_gist on public.batiments using gist (geom_3857);
 create index batiments_dep_idx on public.batiments (dep);
 
+-- ───────────── Bâtiments du cadastre (Etalab) : plus complets que la BDNB, servent à savoir si une parcelle est bâtie ─────────────
+create table public.cad_batiments (
+  id         bigserial primary key,
+  dep        text not null,
+  type       text,                        -- 01 = bâti dur, 02 = bâti léger
+  geom       geometry(MultiPolygon, 4326) not null,
+  geom_3857  geometry(MultiPolygon, 3857) generated always as (st_transform(geom, 3857)) stored
+);
+create index cad_batiments_geom_3857_gist on public.cad_batiments using gist (geom_3857);
+create index cad_batiments_dep_idx on public.cad_batiments (dep);
+
 create table public.bat_parcelle (
   bg_id      text not null,
   idu        text not null,
@@ -239,6 +250,7 @@ create table public.parcel_features (
   copro_nb_lots    integer,
   is_pm            boolean not null default false,
   pm_count         integer not null default 0,
+  lot_libre_m2     numeric,              -- divisible : surface du plus grand lot détachable estimé (m²)
   pm_siren         text,
   pm_denomination  text,
   pm_forme         text,
