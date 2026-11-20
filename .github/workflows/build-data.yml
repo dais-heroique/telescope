@@ -2,19 +2,24 @@ name: Construire les données
 
 # Pour chaque département : ingestion PostGIS éphémère → export SQLite local → découpage en morceaux compressés →
 # publication dans la release GitHub « data-<dep> » (hébergement gratuit, lu à la demande par l'application).
-# Déclenchement : push sur .github/data-trigger.txt (1re ligne = départements, « metropole » ou « france »).
+# Déclenchement : push sur .github/data-trigger.txt (1re ligne = départements, « metropole » ou « france »),
+# ou automatiquement toutes les 6 heures : les 6 départements aux données les plus anciennes sont reconstruits
+# (≈ 24 par jour → toute la France rafraîchie en 4 à 5 jours ; l'application voit les nouvelles données en ≤ 10 min).
 on:
   push:
     paths: [".github/data-trigger.txt"]
+  schedule:
+    - cron: "23 */6 * * *"
   workflow_dispatch:
     inputs:
       deps:
-        description: "Départements (ex. « 74 73 », « metropole », « france »)"
+        description: "Départements (ex. « 74 73 », « metropole », « france », « anciens:10 » = les 10 plus anciens)"
         default: "74"
         required: true
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   plan:
@@ -23,11 +28,19 @@ jobs:
       deps: ${{ steps.p.outputs.deps }}
     steps:
       - uses: actions/checkout@v4
+      - name: Garder la planification active
+        # GitHub suspend les tâches planifiées d'un dépôt public sans activité depuis 60 jours : on la réactive à chaque passage.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/build-data.yml/enable" || echo "::warning::réactivation impossible"
       - id: p
         env:
           INPUT_DEPS: ${{ inputs.deps }}
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           RAW="$INPUT_DEPS"
+          if [ "$EVENT" = "schedule" ]; then RAW="anciens:6"; fi
           if [ -z "$RAW" ]; then RAW="$(head -n1 .github/data-trigger.txt)"; fi
           RAW="$(echo "$RAW" | sed 's/#.*//' | tr ',' ' ')"
           METRO="$(printf '%02d ' $(seq 1 19)) 2A 2B $(printf '%02d ' $(seq 21 95))"
@@ -39,6 +52,13 @@ jobs:
               !*) EXCL="$EXCL ${t#!}" ;;
               metropole) LIST="$LIST $METRO" ;;
               france) LIST="$LIST $METRO $DOM" ;;
+              anciens:[0-9]*)
+                # date du manifeste publié par département (absent = jamais construit → prioritaire)
+                gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+                  --jq '.[] | select(.tag_name | startswith("data-")) | [(.tag_name | ltrimstr("data-")), ([.assets[] | select(.name | startswith("manifest-")) | .updated_at] | first // "0")] | @tsv' > /tmp/dates.tsv
+                OLD="$(for d in $METRO $DOM; do printf '%s\t%s\n' "$(awk -F'\t' -v d="$d" '$1==d{print $2}' /tmp/dates.tsv | head -n1 | sed 's/^$/0/')" "$d"; done | sort | head -n "${t#anciens:}" | cut -f2 | tr '\n' ' ')"
+                echo "plus anciens : $OLD"
+                LIST="$LIST $OLD" ;;
               [0-9][0-9]|2A|2B|97[0-9]) LIST="$LIST $t" ;;
               *) echo "département invalide : $t"; exit 1 ;;
             esac

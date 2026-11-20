@@ -1,6 +1,7 @@
 import type { ParcelBase, Synthese } from "@/lib/parcelle/types";
 import { fmtDate, fmtEur, fmtM2 } from "@/lib/parcelle/format";
 import { queryOne } from "../db";
+import { manifestFor } from "../shards";
 
 type F = Record<string, number | string | null>;
 
@@ -33,6 +34,8 @@ export async function getSynthese(base: ParcelBase): Promise<Synthese> {
   add("Copropriété", f.is_copro ? `Immatriculée${f.copro_nb_lots ? ` · ${f.copro_nb_lots} lots` : ""}` : null);
   if (Number(f.nb_permis_5y)) add("Permis (5 ans)", `${f.nb_permis_5y} sur la parcelle`);
   if (Number(f.nb_permis_proches)) add("Permis à proximité (3 ans)", `${f.nb_permis_proches}`);
+  const m = await manifestFor(base.dep).catch(() => null);
+  if (m?.builtAt) add("Données mises à jour", `${new Date(m.builtAt).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" })} (rafraîchies automatiquement)`);
 
   const flags: Synthese["flags"] = [];
   if (f.is_passoire) flags.push({ key: "passoire", label: "Passoire thermique (F/G)" });
